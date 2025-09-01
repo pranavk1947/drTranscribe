@@ -1,0 +1,136 @@
+# DrTranscribe Configuration File
+# Medical Transcription and Processing System
+
+app_name: "DrTranscribe"
+version: "1.0.0"
+environment: "development"
+debug: false
+log_level: "INFO"
+log_file: "./logs/app.log"
+
+# Audio Processing Configuration
+audio:
+  sample_rate: 16000
+  chunk_size: 1024
+  supported_formats: [".wav", ".mp3", ".m4a", ".flac", ".ogg"]
+  noise_reduction: true
+  voice_activity_detection: true
+  max_file_size_mb: 100
+
+# Speech-to-Text Configuration
+transcription:
+  provider: "openai_whisper"  # Options: openai_whisper, local_whisper, azure_speech, google_speech
+  model: "whisper-1"
+  language: "en"  # Use "auto" for auto-detection
+  temperature: 0.0
+  response_format: "verbose_json"
+  timestamp_granularities: ["word", "segment"]
+
+# Medical NLP Configuration
+medical_nlp:
+  model_provider: "huggingface"
+  entity_extraction_model: "clinical-bert-base-uncased"
+  icd_coding_model: "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
+  medication_model: "allenai/scibert_scivocab_uncased"
+  confidence_threshold: 0.85
+  max_tokens: 4096
+
+# Vector Database Configuration
+vector_db:
+  provider: "chroma"  # Options: chroma, pinecone, weaviate, qdrant
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  collection_name: "patient_history"
+  dimension: 384
+  similarity_metric: "cosine"
+  max_results: 10
+  persist_directory: "./data/vector_store"
+
+# Security and Compliance Configuration
+security:
+  encryption_key_path: "./config/encryption.key"
+  enable_audit_logging: true
+  audit_log_path: "./logs/audit.log"
+  data_retention_days: 2555  # 7 years for medical records
+  enable_phi_detection: true
+  anonymize_transcripts: false
+
+# Database Configuration
+database:
+  url: "postgresql://localhost:5432/drtranscribe"
+  echo: false
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true
+  workers: 1
+
+# Medical Specialties and ICD Configuration
+medical_config:
+  supported_specialties:
+    - "General Practice"
+    - "Internal Medicine"
+    - "Pediatrics"
+    - "Cardiology"
+    - "Dermatology"
+    - "Orthopedics"
+    - "Psychiatry"
+    - "Emergency Medicine"
+  
+  icd_version: "ICD-10-CM"
+  
+  common_medications:
+    - "Acetaminophen"
+    - "Ibuprofen"
+    - "Aspirin"
+    - "Metformin"
+    - "Lisinopril"
+    - "Atorvastatin"
+    - "Omeprazole"
+    - "Amlodipine"
+
+# Form Generation Configuration
+forms:
+  prescription_templates:
+    - "standard_prescription"
+    - "pediatric_prescription"
+    - "controlled_substance"
+  
+  output_formats: ["pdf", "html", "json"]
+  
+  prescription_validity_days: 365
+  
+  required_fields:
+    - "patient_name"
+    - "patient_id"
+    - "doctor_name"
+    - "doctor_license"
+    - "medications"
+    - "date_prescribed"
+
+# Processing Limits and Timeouts
+limits:
+  max_concurrent_transcriptions: 5
+  transcription_timeout_seconds: 300
+  max_audio_duration_minutes: 60
+  max_patient_history_months: 24
+  max_search_results: 50
+
+# Monitoring and Alerts
+monitoring:
+  enable_metrics: true
+  metrics_port: 9090
+  health_check_interval_seconds: 30
+  alert_on_processing_failures: true
+  alert_email: "admin@clinic.com"
+
+# Development and Testing
+development:
+  mock_external_apis: false
+  use_sample_data: false
+  enable_debug_endpoints: false
+  log_sensitive_data: false
