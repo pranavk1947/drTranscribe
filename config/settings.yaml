@@ -1,0 +1,34 @@
+transcription:
+  provider: "groq"
+  model: "whisper-large-v3"
+  output_format: "wav"  # Format to send to provider: "wav" or "webm"
+
+extraction:
+  provider: "azure"
+  model: "gpt-4.1-mini"
+  temperature: 0.3
+
+# OpenAI Configuration
+openai:
+  api_key: "${OPENAI_API_KEY}"
+
+# Groq Configuration (FREE!)
+groq:
+  api_key: "${GROQ_API_KEY}"
+
+# Azure OpenAI Configuration
+azure_openai:
+  api_key: "${AZURE_OPENAI_API_KEY}"
+  endpoint: "https://llmproxyhub5196723659.cognitiveservices.azure.com/"
+  api_version: "2024-08-01-preview"
+  whisper_deployment: "whisper"
+  gpt_deployment: "gpt-4.1-mini"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+audio:
+  chunk_duration_seconds: 5  # Duration of each audio chunk for real-time transcription
+  sample_rate: 16000         # Groq Whisper optimized sample rate (16kHz)
+  channels: 1                # Mono channel (required for medical clarity)
