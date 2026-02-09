@@ -1,14 +1,12 @@
 """
-DrTranscribe - AI Medical Transcription and Processing System
+drTranscribe MVP - Real-time Medical Transcription System
 
-A comprehensive system for processing patient-doctor conversations,
-extracting medical information, and automating prescription forms.
+A real-time medical transcription system that captures doctor-patient
+conversations and extracts structured clinical data.
 """
 
 __version__ = "1.0.0"
 __author__ = "Loop Health"
 
-from .main import DrTranscribeApp
-from .config.settings import Config
-
-__all__ = ["DrTranscribeApp", "Config"]
+# MVP - minimal exports
+__all__ = []
