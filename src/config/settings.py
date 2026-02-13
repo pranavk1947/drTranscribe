@@ -40,6 +40,11 @@ class GroqConfig(BaseModel):
     api_key: str
 
 
+class GeminiConfig(BaseModel):
+    """Google Gemini API configuration."""
+    api_key: str
+
+
 class ServerConfig(BaseModel):
     """Server configuration."""
     host: str = "0.0.0.0"
@@ -60,6 +65,7 @@ class Settings(BaseModel):
     openai: Optional[OpenAIConfig] = None
     azure_openai: Optional[AzureOpenAIConfig] = None
     groq: Optional[GroqConfig] = None
+    gemini: Optional[GeminiConfig] = None
     server: ServerConfig
     audio: AudioSettings = AudioSettings()
 

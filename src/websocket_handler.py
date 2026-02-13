@@ -1,6 +1,7 @@
 import json
 import logging
 import base64
+import struct
 import uuid
 from typing import Optional
 from fastapi import WebSocket, WebSocketDisconnect
@@ -114,6 +115,44 @@ class WebSocketHandler:
             await self._send_error(websocket, f"Failed to start session: {str(e)}")
             raise
     
+    @staticmethod
+    def _is_silent_wav(audio_bytes: bytes, rms_threshold: float = 200.0) -> bool:
+        """
+        Check if a WAV audio chunk is effectively silent.
+
+        Parses the WAV header to find Int16 PCM data and computes RMS energy.
+        Silent or near-silent audio causes Gemini to hallucinate entire
+        conversations, so we must skip these chunks.
+
+        Args:
+            audio_bytes: Raw WAV file bytes (44-byte header + Int16 PCM)
+            rms_threshold: RMS energy below this = silence (scale: 0-32768)
+
+        Returns:
+            True if audio is silent/near-silent
+        """
+        try:
+            if len(audio_bytes) <= 44:
+                return True
+
+            # WAV PCM data starts at byte 44
+            pcm_data = audio_bytes[44:]
+            num_samples = len(pcm_data) // 2
+
+            if num_samples == 0:
+                return True
+
+            # Parse Int16 samples and compute RMS
+            samples = struct.unpack(f'<{num_samples}h', pcm_data[:num_samples * 2])
+            sum_sq = sum(s * s for s in samples)
+            rms = (sum_sq / num_samples) ** 0.5
+
+            logger.debug(f"Audio RMS energy: {rms:.1f} (threshold: {rms_threshold})")
+            return rms < rms_threshold
+        except Exception as e:
+            logger.warning(f"Silence detection failed, processing anyway: {e}")
+            return False
+
     async def _handle_audio_chunk(
         self,
         websocket: WebSocket,
@@ -124,15 +163,20 @@ class WebSocketHandler:
         try:
             audio_msg = AudioChunkMessage(**message)
             session = self.session_manager.get_session(session_id)
-            
+
             if not session:
                 await self._send_error(websocket, "Session not found")
                 return
-            
+
             # Decode Base64 audio data
             audio_bytes = base64.b64decode(audio_msg.audio_data)
             logger.debug(f"Received {len(audio_bytes)} bytes of audio")
-            
+
+            # Skip silent chunks to prevent Gemini hallucination
+            if self._is_silent_wav(audio_bytes):
+                logger.debug("Silent audio chunk, skipping transcription")
+                return
+
             # Transcribe audio
             transcript = await self.transcription_service.transcribe(audio_bytes)
             if not transcript or not transcript.strip():
@@ -186,6 +230,8 @@ class WebSocketHandler:
 
             logger.info(f"Sent extraction update for session {session_id}")
         
+        except (WebSocketDisconnect, RuntimeError) as e:
+            logger.warning(f"WebSocket closed during audio processing: {e}")
         except Exception as e:
             logger.error(f"Failed to process audio chunk: {str(e)}", exc_info=True)
             await self._send_error(websocket, f"Failed to process audio: {str(e)}")

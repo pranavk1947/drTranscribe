@@ -4,6 +4,7 @@ from ..providers.base import TranscriptionProvider
 from ..providers.transcription.openai_whisper import OpenAIWhisperProvider
 from ..providers.transcription.azure_whisper import AzureWhisperProvider
 from ..providers.transcription.groq_whisper import GroqWhisperProvider
+from ..providers.transcription.gemini_stt import GeminiSTTProvider
 from ..providers.transcription.mock_whisper import MockWhisperProvider
 from ..config.settings import Settings
 
@@ -17,6 +18,7 @@ class TranscriptionService:
         "openai": OpenAIWhisperProvider,
         "azure": AzureWhisperProvider,
         "groq": GroqWhisperProvider,
+        "gemini": GeminiSTTProvider,
         "mock": MockWhisperProvider,
     }
 
@@ -58,6 +60,14 @@ class TranscriptionService:
                 api_key=self.settings.groq.api_key,
                 model=self.settings.transcription.model,
                 output_format=self.settings.transcription.output_format
+            )
+
+        elif provider_name == "gemini":
+            if not self.settings.gemini:
+                raise ValueError("Gemini configuration not found")
+            return provider_class(
+                api_key=self.settings.gemini.api_key,
+                model=self.settings.transcription.model
             )
 
         elif provider_name == "mock":
