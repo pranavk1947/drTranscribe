@@ -1,0 +1,448 @@
+/* drTranscribe - Meeting Overlay Panel + Badge
+ * All classes prefixed drt- to avoid conflicts with Meet/Zoom CSS.
+ * Dark theme to blend with meeting UIs.
+ */
+
+/* ─── Floating Badge ────────────────────────────────────────── */
+
+.drt-badge {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #1e1e2e;
+    border: 2px solid #313244;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: #89b4fa;
+    cursor: pointer;
+    z-index: 2147483646;
+    transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
+    user-select: none;
+}
+
+.drt-badge:hover {
+    transform: scale(1.1);
+}
+
+.drt-badge-detected {
+    box-shadow: 0 0 12px rgba(137, 180, 250, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.drt-badge-active {
+    border-color: #a6e3a1;
+    box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+    animation: drt-badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes drt-badge-pulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(166, 227, 161, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3); }
+}
+
+/* ─── Panel ─────────────────────────────────────────────────── */
+
+.drt-panel {
+    position: fixed;
+    top: 80px;
+    right: 16px;
+    width: 320px;
+    max-height: calc(100vh - 100px);
+    background: #1e1e2e;
+    border: 1px solid #313244;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 2147483647;
+    font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    color: #cdd6f4;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.2s;
+}
+
+.drt-panel:hover {
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ─── Header ─────────────────────────────────────────────── */
+
+.drt-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #181825;
+    cursor: grab;
+    user-select: none;
+    border-bottom: 1px solid #313244;
+}
+
+.drt-header:active {
+    cursor: grabbing;
+}
+
+.drt-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.drt-logo {
+    font-weight: 700;
+    font-size: 16px;
+    color: #89b4fa;
+    letter-spacing: -0.5px;
+}
+
+.drt-status {
+    font-size: 11px;
+    color: #6c7086;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #313244;
+}
+
+.drt-status-connecting {
+    color: #f9e2af;
+    background: #433a27;
+}
+
+.drt-status-recording {
+    color: #a6e3a1;
+    background: #273a27;
+    animation: drt-pulse 1.5s ease-in-out infinite;
+}
+
+.drt-status-error {
+    color: #f38ba8;
+    background: #3a2727;
+}
+
+@keyframes drt-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.drt-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.drt-btn-icon {
+    background: none;
+    border: none;
+    color: #6c7086;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+}
+
+.drt-btn-icon:hover {
+    background: #313244;
+    color: #cdd6f4;
+}
+
+/* ─── Body ───────────────────────────────────────────────── */
+
+.drt-body {
+    overflow-y: auto;
+    max-height: calc(100vh - 160px);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.drt-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.drt-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.drt-body::-webkit-scrollbar-thumb {
+    background: #45475a;
+    border-radius: 2px;
+}
+
+/* ─── Patient Form ───────────────────────────────────────── */
+
+.drt-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6c7086;
+    margin-bottom: 8px;
+}
+
+.drt-form-row {
+    margin-bottom: 8px;
+}
+
+.drt-form-row-split {
+    display: flex;
+    gap: 8px;
+}
+
+.drt-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: #313244;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    color: #cdd6f4;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+}
+
+.drt-input:focus {
+    border-color: #89b4fa;
+}
+
+.drt-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.drt-input-small {
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.drt-input option {
+    background: #313244;
+    color: #cdd6f4;
+}
+
+/* ─── Buttons ────────────────────────────────────────────── */
+
+.drt-form-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.drt-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.drt-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.drt-btn-start {
+    background: #89b4fa;
+    color: #1e1e2e;
+}
+
+.drt-btn-start:hover:not(:disabled) {
+    background: #74a8fc;
+}
+
+.drt-btn-stop {
+    background: #f38ba8;
+    color: #1e1e2e;
+}
+
+.drt-btn-stop:hover:not(:disabled) {
+    background: #f07090;
+}
+
+/* ─── Result Cards ───────────────────────────────────────── */
+
+.drt-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.drt-card {
+    background: #181825;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: border-color 0.2s;
+}
+
+.drt-card:hover {
+    border-color: #45475a;
+}
+
+.drt-card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #89b4fa;
+    margin-bottom: 4px;
+}
+
+.drt-card-content {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #cdd6f4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.drt-card-content.drt-empty {
+    color: #585b70;
+    font-style: italic;
+}
+
+/* ─── Post-Session: Editable Textareas ───────────────────── */
+
+.drt-card-textarea {
+    width: 100%;
+    min-height: 60px;
+    padding: 8px 10px;
+    background: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    color: #cdd6f4;
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.5;
+    outline: none;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+}
+
+.drt-card-textarea:focus {
+    border-color: #89b4fa;
+}
+
+.drt-card-textarea::placeholder {
+    color: #585b70;
+    font-style: italic;
+}
+
+/* ─── Export Bar ─────────────────────────────────────────── */
+
+.drt-export-bar {
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 1px solid #313244;
+}
+
+.drt-export-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.drt-btn-export {
+    padding: 8px 10px;
+    background: #313244;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    color: #cdd6f4;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    text-align: center;
+}
+
+.drt-btn-export:hover {
+    background: #45475a;
+    border-color: #585b70;
+}
+
+.drt-btn-export-primary {
+    background: #89b4fa;
+    color: #1e1e2e;
+    border-color: #89b4fa;
+}
+
+.drt-btn-export-primary:hover {
+    background: #74a8fc;
+    border-color: #74a8fc;
+}
+
+/* ─── New Session Button ─────────────────────────────────── */
+
+.drt-btn-new-session {
+    width: 100%;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px dashed #45475a;
+    border-radius: 8px;
+    color: #6c7086;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.drt-btn-new-session:hover {
+    background: #313244;
+    color: #cdd6f4;
+    border-color: #585b70;
+}
+
+/* ─── Toast Notification ─────────────────────────────────── */
+
+.drt-toast {
+    position: fixed;
+    bottom: 80px;
+    right: 24px;
+    padding: 10px 20px;
+    background: #313244;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    color: #cdd6f4;
+    font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 2147483647;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+}
+
+.drt-toast-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ─── Number input - hide spinners ───────────────────────── */
+
+.drt-input[type="number"]::-webkit-inner-spin-button,
+.drt-input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.drt-input[type="number"] {
+    -moz-appearance: textfield;
+}

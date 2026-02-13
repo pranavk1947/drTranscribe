@@ -1,0 +1,148 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    width: 300px;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px;
+    background: #1e1e2e;
+    color: #cdd6f4;
+}
+
+.popup {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+/* ─── Header ─────────────────────────────────────────────── */
+
+.popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #313244;
+}
+
+.popup-logo {
+    font-weight: 700;
+    font-size: 18px;
+    color: #89b4fa;
+    letter-spacing: -0.5px;
+}
+
+.popup-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #a6adc8;
+}
+
+/* ─── Sections ───────────────────────────────────────────── */
+
+.popup-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.popup-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6c7086;
+}
+
+.popup-input-row {
+    display: flex;
+    gap: 6px;
+}
+
+.popup-input {
+    flex: 1;
+    padding: 7px 10px;
+    background: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    color: #cdd6f4;
+    font-size: 12px;
+    font-family: monospace;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.popup-input:focus {
+    border-color: #89b4fa;
+}
+
+.popup-input-full {
+    width: 100%;
+    font-family: inherit;
+}
+
+.popup-btn {
+    padding: 7px 14px;
+    background: #89b4fa;
+    color: #1e1e2e;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.popup-btn:hover {
+    background: #74a8fc;
+}
+
+/* ─── Status ─────────────────────────────────────────────── */
+
+.popup-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #181825;
+    border-radius: 6px;
+}
+
+.popup-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #585b70;
+    flex-shrink: 0;
+}
+
+.popup-status-checking {
+    background: #f9e2af;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.popup-status-ok {
+    background: #a6e3a1;
+}
+
+.popup-status-error {
+    background: #f38ba8;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ─── Footer ─────────────────────────────────────────────── */
+
+.popup-footer {
+    font-size: 11px;
+    color: #585b70;
+    text-align: center;
+}

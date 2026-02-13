@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>drTranscribe v2 - System Design Document</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #1c2333;
+            --bg-card: #1a1f2e;
+            --border: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #bc8cff;
+            --accent-cyan: #39d2c0;
+            --accent-pink: #f778ba;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 0;
+        }
+
+        /* ─── Hero ───────────────────────────────────────── */
+        .hero {
+            background: linear-gradient(135deg, #0d1117 0%, #1a1040 50%, #0d1117 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 60px 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 30% 50%, rgba(88, 166, 255, 0.08) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 50%, rgba(188, 140, 255, 0.06) 0%, transparent 50%);
+        }
+        .hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; }
+        .hero h1 { font-size: 42px; font-weight: 700; letter-spacing: -1px; margin-bottom: 8px; }
+        .hero h1 span { color: var(--accent-blue); }
+        .hero .subtitle { font-size: 18px; color: var(--text-secondary); margin-bottom: 20px; }
+        .hero .meta { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
+        .hero .meta-item {
+            font-size: 13px; color: var(--text-muted);
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            padding: 6px 14px; border-radius: 20px;
+        }
+        .hero .meta-item strong { color: var(--text-secondary); }
+
+        /* ─── Layout ─────────────────────────────────────── */
+        .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+
+        /* ─── Table of Contents ──────────────────────────── */
+        .toc {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 12px; padding: 28px 32px; margin-bottom: 48px;
+        }
+        .toc h2 { font-size: 16px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+        .toc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
+        .toc a {
+            color: var(--accent-blue); text-decoration: none; font-size: 14px;
+            padding: 6px 12px; border-radius: 6px; display: block;
+            transition: background 0.15s;
+        }
+        .toc a:hover { background: var(--bg-tertiary); }
+        .toc a .num { color: var(--text-muted); font-family: monospace; margin-right: 8px; }
+
+        /* ─── Sections ───────────────────────────────────── */
+        .section {
+            margin-bottom: 56px;
+            scroll-margin-top: 24px;
+        }
+        .section-header {
+            display: flex; align-items: center; gap: 12px;
+            padding-bottom: 12px; border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+        .section-num {
+            font-size: 14px; font-weight: 700; font-family: monospace;
+            color: var(--accent-blue); background: rgba(88, 166, 255, 0.1);
+            padding: 4px 10px; border-radius: 6px;
+        }
+        .section-header h2 { font-size: 24px; font-weight: 600; }
+
+        /* ─── Text ────────────────────────────────────────── */
+        p { margin-bottom: 16px; color: var(--text-secondary); font-size: 15px; }
+        strong { color: var(--text-primary); }
+
+        /* ─── Diagrams (Mermaid containers) ───────────────── */
+        .diagram-container {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 12px; padding: 24px; margin: 20px 0 28px;
+            overflow-x: auto;
+        }
+        .diagram-container .mermaid {
+            display: flex; justify-content: center;
+        }
+        .diagram-label {
+            font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-muted); margin-bottom: 16px; text-align: center;
+        }
+
+        /* ─── Cards ───────────────────────────────────────── */
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin: 20px 0; }
+        .card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; padding: 20px;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #444c56; }
+        .card-icon { font-size: 24px; margin-bottom: 8px; }
+        .card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+        .card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 0; }
+        .card .tag {
+            display: inline-block; font-size: 11px; font-weight: 600;
+            padding: 2px 8px; border-radius: 10px; margin-top: 8px;
+        }
+        .tag-green { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+        .tag-blue { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+        .tag-orange { background: rgba(210, 153, 34, 0.15); color: var(--accent-orange); }
+        .tag-red { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+        .tag-purple { background: rgba(188, 140, 255, 0.15); color: var(--accent-purple); }
+        .tag-cyan { background: rgba(57, 210, 192, 0.15); color: var(--accent-cyan); }
+
+        /* ─── Tables ──────────────────────────────────────── */
+        table {
+            width: 100%; border-collapse: collapse; margin: 16px 0;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 10px 14px; text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--text-muted); font-weight: 600;
+            background: var(--bg-tertiary);
+        }
+        td { color: var(--text-secondary); }
+        td code {
+            background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;
+            font-size: 12px; color: var(--accent-cyan);
+        }
+        tr:hover td { background: var(--bg-secondary); }
+
+        /* ─── Code blocks ─────────────────────────────────── */
+        .code-block {
+            background: var(--bg-tertiary); border: 1px solid var(--border);
+            border-radius: 8px; padding: 16px 20px; margin: 12px 0;
+            font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+            overflow-x: auto; color: var(--text-secondary); line-height: 1.7;
+        }
+        .code-block .keyword { color: var(--accent-purple); }
+        .code-block .string { color: var(--accent-green); }
+        .code-block .comment { color: var(--text-muted); font-style: italic; }
+        .code-block .type { color: var(--accent-cyan); }
+        .code-block .fn { color: var(--accent-blue); }
+
+        /* ─── Callout boxes ───────────────────────────────── */
+        .callout {
+            border-radius: 8px; padding: 16px 20px; margin: 16px 0;
+            border-left: 3px solid;
+        }
+        .callout-info { background: rgba(88, 166, 255, 0.06); border-color: var(--accent-blue); }
+        .callout-warn { background: rgba(210, 153, 34, 0.06); border-color: var(--accent-orange); }
+        .callout-danger { background: rgba(248, 81, 73, 0.06); border-color: var(--accent-red); }
+        .callout-success { background: rgba(63, 185, 80, 0.06); border-color: var(--accent-green); }
+        .callout h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+        .callout p { font-size: 13px; margin-bottom: 0; }
+
+        /* ─── Metric strip ────────────────────────────────── */
+        .metrics {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px; margin: 20px 0;
+        }
+        .metric {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 10px; padding: 16px; text-align: center;
+        }
+        .metric-value { font-size: 28px; font-weight: 700; color: var(--accent-blue); }
+        .metric-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* ─── Flow steps ──────────────────────────────────── */
+        .flow-steps { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+        .flow-step {
+            display: flex; gap: 16px; padding: 16px 0;
+            border-left: 2px solid var(--border); margin-left: 16px; padding-left: 24px;
+            position: relative;
+        }
+        .flow-step::before {
+            content: attr(data-step);
+            position: absolute; left: -13px; top: 14px;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: var(--accent-blue); color: var(--bg-primary);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 700;
+        }
+        .flow-step-content h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .flow-step-content p { font-size: 13px; margin-bottom: 0; }
+        .flow-step-content .tech { font-size: 11px; color: var(--accent-cyan); font-family: monospace; }
+
+        /* ─── Separator ───────────────────────────────────── */
+        hr { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+        /* ─── Lists ───────────────────────────────────────── */
+        ul, ol { margin: 12px 0; padding-left: 24px; }
+        li { color: var(--text-secondary); font-size: 14px; margin-bottom: 6px; }
+        li strong { color: var(--text-primary); }
+
+        /* ─── Sub-section headers ─────────────────────────── */
+        h3 { font-size: 18px; font-weight: 600; margin: 28px 0 12px; color: var(--text-primary); }
+        h3 .decorator { color: var(--accent-purple); margin-right: 8px; }
+
+        /* ─── Responsive ──────────────────────────────────── */
+        @media (max-width: 768px) {
+            .hero { padding: 40px 20px; }
+            .hero h1 { font-size: 28px; }
+            .container { padding: 24px 16px; }
+            .card-grid { grid-template-columns: 1fr; }
+            .metrics { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- HERO -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="hero">
+    <div class="hero-content">
+        <h1><span>drTranscribe</span> v2.0</h1>
+        <div class="subtitle">High-Level System Design &mdash; Real-Time Clinical Extraction Platform</div>
+        <div class="meta">
+            <span class="meta-item"><strong>Author:</strong> Engineering Team</span>
+            <span class="meta-item"><strong>Version:</strong> 2.0.0</span>
+            <span class="meta-item"><strong>Last Updated:</strong> Feb 2026</span>
+            <span class="meta-item"><strong>Status:</strong> Production-Ready MVP</span>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- TABLE OF CONTENTS -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="toc">
+    <h2>Contents</h2>
+    <div class="toc-grid">
+        <a href="#s1"><span class="num">01</span> Executive Summary</a>
+        <a href="#s2"><span class="num">02</span> Architecture Overview</a>
+        <a href="#s3"><span class="num">03</span> Component Deep-Dive</a>
+        <a href="#s4"><span class="num">04</span> Data Flow &amp; Audio Pipeline</a>
+        <a href="#s5"><span class="num">05</span> WebSocket Protocol</a>
+        <a href="#s6"><span class="num">06</span> AI/ML Model Layer</a>
+        <a href="#s7"><span class="num">07</span> Chrome Extension Architecture</a>
+        <a href="#s8"><span class="num">08</span> Fault Tolerance &amp; Resilience</a>
+        <a href="#s9"><span class="num">09</span> Scalability Strategy</a>
+        <a href="#s10"><span class="num">10</span> Concurrency Model</a>
+        <a href="#s11"><span class="num">11</span> Security &amp; Compliance</a>
+        <a href="#s12"><span class="num">12</span> Observability &amp; Monitoring</a>
+        <a href="#s13"><span class="num">13</span> Cost Analysis</a>
+        <a href="#s14"><span class="num">14</span> Future Roadmap</a>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 1. EXECUTIVE SUMMARY -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s1">
+    <div class="section-header">
+        <span class="section-num">01</span>
+        <h2>Executive Summary</h2>
+    </div>
+    <p>
+        <strong>drTranscribe</strong> is a real-time clinical extraction platform that captures audio from
+        telemedicine consultations (Google Meet, Zoom), transcribes the conversation, and uses LLMs to extract
+        structured medical data into 5 clinical sections: <strong>Chief Complaint, Diagnosis, Medicine, Advice,
+        and Next Steps</strong>.
+    </p>
+    <p>
+        The system operates as a <strong>Chrome extension</strong> that overlays on video-call platforms,
+        with a <strong>FastAPI backend</strong> orchestrating the AI pipeline. The architecture is provider-agnostic
+        &mdash; transcription (Groq/OpenAI/Azure Whisper) and extraction (GPT-4/Azure) are swappable via configuration.
+    </p>
+
+    <div class="metrics">
+        <div class="metric">
+            <div class="metric-value">8&ndash;11s</div>
+            <div class="metric-label">End-to-End Latency</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">5s</div>
+            <div class="metric-label">Audio Chunk Size</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">16kHz</div>
+            <div class="metric-label">Sample Rate (Mono)</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">~$67</div>
+            <div class="metric-label">Monthly Cost / 1K Consults</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">4</div>
+            <div class="metric-label">Export Formats</div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 2. ARCHITECTURE OVERVIEW -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s2">
+    <div class="section-header">
+        <span class="section-num">02</span>
+        <h2>Architecture Overview</h2>
+    </div>
+    <p>
+        The system follows a <strong>layered pipeline architecture</strong> with clear separation between audio capture (client),
+        real-time transport (WebSocket), and AI processing (server). Each layer is independently replaceable.
+    </p>
+
+    <div class="diagram-container">
+        <div class="diagram-label">End-to-End System Architecture</div>
+        <div class="mermaid">
+graph TB
+    subgraph CLIENT["CLIENT LAYER (Chrome Extension)"]
+        direction TB
+        BADGE["Floating Badge<br/><i>Non-intrusive activation</i>"]
+        PANEL["Overlay Panel<br/><i>Patient form + 5 cards</i>"]
+        CAPTURE["Audio Capture<br/><i>AudioWorklet + WAV Encoder</i>"]
+        EXPORT["Export Module<br/><i>PDF / Gmail / Clipboard / TXT</i>"]
+        BG["Background Service Worker<br/><i>tabCapture + WebSocket relay</i>"]
+        OFFSCREEN["Offscreen Document<br/><i>Tab audio + mic mixing</i>"]
+
+        BADGE -->|click| PANEL
+        PANEL -->|start session| BG
+        BG -->|streamId| OFFSCREEN
+        OFFSCREEN -->|audio chunks| BG
+        PANEL -->|post-session| EXPORT
+    end
+
+    subgraph TRANSPORT["TRANSPORT LAYER"]
+        WS["WebSocket /ws<br/><i>Persistent bidirectional</i>"]
+    end
+
+    subgraph SERVER["SERVER LAYER (FastAPI + Uvicorn)"]
+        direction TB
+        API["REST API<br/><i>/health, /api/config</i>"]
+        WSH["WebSocket Handler<br/><i>Message routing + pipeline</i>"]
+        SM["Session Manager<br/><i>In-memory session store</i>"]
+
+        subgraph AI["AI PIPELINE"]
+            direction LR
+            TS["Transcription Service<br/><i>Speech-to-Text</i>"]
+            ES["Extraction Service<br/><i>NLP + Structured Output</i>"]
+            TS -->|full transcript| ES
+        end
+
+        WSH --> SM
+        WSH --> AI
+    end
+
+    subgraph PROVIDERS["EXTERNAL AI PROVIDERS"]
+        direction LR
+        GROQ["Groq Whisper<br/><i>whisper-large-v3</i>"]
+        OAI_W["OpenAI Whisper<br/><i>whisper-1</i>"]
+        AZURE_W["Azure Whisper<br/><i>deployment-based</i>"]
+        GPT["Azure GPT<br/><i>gpt-4.1-mini</i>"]
+        OAI_G["OpenAI GPT-4<br/><i>gpt-4-turbo</i>"]
+    end
+
+    BG <-->|JSON messages| WS
+    WS <--> WSH
+    TS -.->|config-selected| GROQ
+    TS -.->|fallback| OAI_W
+    TS -.->|fallback| AZURE_W
+    ES -.->|config-selected| GPT
+    ES -.->|fallback| OAI_G
+
+    style CLIENT fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style TRANSPORT fill:#1c2333,stroke:#58a6ff,color:#e6edf3
+    style SERVER fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style AI fill:#1c2333,stroke:#bc8cff,color:#e6edf3
+    style PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+        </div>
+    </div>
+
+    <h3><span class="decorator">#</span> Technology Stack</h3>
+    <table>
+        <tr><th>Layer</th><th>Technology</th><th>Rationale</th></tr>
+        <tr><td><strong>Client</strong></td><td><code>Chrome Extension (Manifest v3)</code></td><td>Native tab capture API, cross-platform meet injection</td></tr>
+        <tr><td><strong>Audio</strong></td><td><code>AudioWorklet + WAV Encoder</code></td><td>Zero-drop capture, configurable sample rate, dedicated thread</td></tr>
+        <tr><td><strong>Transport</strong></td><td><code>WebSocket (JSON)</code></td><td>Persistent bidirectional, low overhead for streaming</td></tr>
+        <tr><td><strong>Server</strong></td><td><code>FastAPI + Uvicorn (ASGI)</code></td><td>Async-native, WebSocket support, high concurrency</td></tr>
+        <tr><td><strong>STT</strong></td><td><code>Groq Whisper large-v3</code></td><td>Free tier, 5x faster than OpenAI, medical-grade accuracy</td></tr>
+        <tr><td><strong>LLM</strong></td><td><code>Azure GPT-4.1-mini</code></td><td>Low latency, structured JSON output, enterprise SLA</td></tr>
+        <tr><td><strong>Export</strong></td><td><code>jsPDF (client-side)</code></td><td>No server round-trip for PDF, offline-capable</td></tr>
+        <tr><td><strong>Config</strong></td><td><code>YAML + .env</code></td><td>Provider switching without code changes</td></tr>
+    </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 3. COMPONENT DEEP-DIVE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s3">
+    <div class="section-header">
+        <span class="section-num">03</span>
+        <h2>Component Deep-Dive</h2>
+    </div>
+
+    <div class="card-grid">
+        <div class="card">
+            <div class="card-icon">&#128268;</div>
+            <h4>Content Script (content.js)</h4>
+            <p>Injects a floating badge on Google Meet / Zoom. Badge click opens the full overlay panel with patient form, 5 extraction cards, session controls, and post-session export bar.</p>
+            <span class="tag tag-blue">Client</span>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#9881;</div>
+            <h4>Background Service Worker (background.js)</h4>
+            <p>Orchestrates tab capture via <code>chrome.tabCapture</code>, manages WebSocket lifecycle to backend, relays audio chunks from offscreen document, and forwards extraction results to content script.</p>
+            <span class="tag tag-blue">Client</span>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#127908;</div>
+            <h4>Offscreen Document (offscreen.js)</h4>
+            <p>Runs in a hidden document context. Captures tab audio stream + microphone, mixes them via AudioWorklet, encodes 5-second WAV chunks, and sends base64-encoded data to background worker.</p>
+            <span class="tag tag-blue">Client</span>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128209;</div>
+            <h4>Export Module (export.js)</h4>
+            <p>Client-side IIFE exposing PDF (jsPDF), Gmail compose URL, clipboard (with execCommand fallback), and TXT blob download. Reads from editable post-session textareas.</p>
+            <span class="tag tag-cyan">Export</span>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128260;</div>
+            <h4>WebSocket Handler (websocket_handler.py)</h4>
+            <p>Receives <code>start_session</code>, <code>audio_chunk</code>, <code>stop_session</code>. Orchestrates the transcribe &rarr; extract &rarr; merge &rarr; respond pipeline per chunk. Error isolation per message.</p>
+            <span class="tag tag-green">Server</span>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#129302;</div>
+            <h4>AI Pipeline (services/)</h4>
+            <p>Factory-pattern provider abstraction. TranscriptionService delegates to configured STT provider. ExtractionService delegates to configured LLM. Both use async clients for non-blocking IO.</p>
+            <span class="tag tag-purple">AI</span>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128451;</div>
+            <h4>Session Manager (session_manager.py)</h4>
+            <p>In-memory <code>Dict[str, ConsultationSession]</code>. Tracks patient info, transcript chunks list, and merged extraction state. No persistence &mdash; sessions are ephemeral by design (HIPAA consideration).</p>
+            <span class="tag tag-green">Server</span>
+        </div>
+        <div class="card">
+            <div class="card-icon">&#128203;</div>
+            <h4>Data Models (models/)</h4>
+            <p>Pydantic models with validation. <code>ExtractionResult.merge()</code> performs bidirectional substring + line-level deduplication to accumulate extraction without repetition.</p>
+            <span class="tag tag-green">Server</span>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 4. DATA FLOW & AUDIO PIPELINE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s4">
+    <div class="section-header">
+        <span class="section-num">04</span>
+        <h2>Data Flow &amp; Audio Pipeline</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Audio Chunk Processing Pipeline (per 5-second window)</div>
+        <div class="mermaid">
+sequenceDiagram
+    participant Tab as Tab Audio
+    participant Mic as Microphone
+    participant AW as AudioWorklet<br/>(dedicated thread)
+    participant WE as WAV Encoder
+    participant BG as Background SW
+    participant WS as WebSocket
+    participant TH as WS Handler
+    participant STT as Transcription<br/>Service
+    participant LLM as Extraction<br/>Service
+    participant SM as Session<br/>Manager
+    participant UI as Content Script
+
+    Tab->>AW: PCM samples (128/frame)
+    Mic->>AW: PCM samples (128/frame)
+    Note over AW: Buffer 80,000 samples<br/>(5s at 16kHz mono)
+    AW->>WE: Float32Array (transferable)
+    WE->>BG: WAV Blob
+    BG->>BG: Base64 encode
+    BG->>WS: audio_chunk {audio_data}
+    WS->>TH: Route message
+
+    rect rgba(188, 140, 255, 0.08)
+        Note over TH,LLM: AI Processing (~3-6s)
+        TH->>STT: transcribe(audio_bytes)
+        STT->>STT: Format conversion<br/>(WebM→Opus/WAV)
+        STT-->>TH: transcript text
+        TH->>SM: append_transcript_chunk()
+        TH->>SM: get_full_transcript()
+        SM-->>TH: joined transcript
+        TH->>LLM: extract(transcript, patient, prev)
+        LLM-->>TH: ExtractionResult JSON
+        TH->>SM: update_extraction(merge)
+    end
+
+    TH->>WS: extraction_update
+    WS->>BG: Forward to tab
+    BG->>UI: chrome.tabs.sendMessage
+    UI->>UI: Update card DOM
+        </div>
+    </div>
+
+    <h3><span class="decorator">#</span> Latency Breakdown</h3>
+    <table>
+        <tr><th>Stage</th><th>Duration</th><th>Notes</th></tr>
+        <tr><td>Audio buffering</td><td><code>5,000 ms</code></td><td>Fixed chunk window (configurable)</td></tr>
+        <tr><td>WAV encoding + base64</td><td><code>~20 ms</code></td><td>Client-side, negligible</td></tr>
+        <tr><td>WebSocket transit</td><td><code>~5 ms</code></td><td>Localhost; ~50ms over internet</td></tr>
+        <tr><td>Transcription API</td><td><code>800&ndash;2,000 ms</code></td><td>Groq: ~800ms, OpenAI: ~2,000ms</td></tr>
+        <tr><td>Extraction API</td><td><code>1,500&ndash;4,000 ms</code></td><td>GPT-4.1-mini: ~1,500ms, GPT-4: ~4,000ms</td></tr>
+        <tr><td>Merge + response</td><td><code>~10 ms</code></td><td>In-memory string operations</td></tr>
+        <tr><td><strong>Total</strong></td><td><strong><code>8&ndash;11 s</code></strong></td><td>From audio capture to UI update</td></tr>
+    </table>
+
+    <div class="callout callout-info">
+        <h4>Design Decision: Full Transcript Re-extraction</h4>
+        <p>Each chunk sends the <strong>full accumulated transcript</strong> (not just the latest chunk) to the LLM.
+        This ensures the extraction has complete context for accurate merging, at the cost of increasing token usage
+        over time. For a typical 10-minute consultation (~2,000 words), this remains well within token limits.</p>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 5. WEBSOCKET PROTOCOL -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s5">
+    <div class="section-header">
+        <span class="section-num">05</span>
+        <h2>WebSocket Protocol</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Session Lifecycle &mdash; Message Exchange</div>
+        <div class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: Connect ws://host/ws
+    Note over C,S: Connection established
+
+    C->>S: {"type": "start_session",<br/>"patient": {"name","age","gender"}}
+    S->>S: Create ConsultationSession
+    Note over S: Session active
+
+    loop Every 5 seconds
+        C->>S: {"type": "audio_chunk",<br/>"audio_data": "base64..."}
+        S->>S: Transcribe → Extract → Merge
+        S->>C: {"type": "extraction_update",<br/>"extraction": {5 fields}}
+    end
+
+    alt Error occurs
+        S->>C: {"type": "error",<br/>"message": "..."}
+        Note over C,S: Session continues
+    end
+
+    C->>S: {"type": "stop_session"}
+    S->>S: Cleanup session
+    Note over C,S: Connection closed
+        </div>
+    </div>
+
+    <h3><span class="decorator">#</span> Message Schema</h3>
+    <table>
+        <tr><th>Direction</th><th>Type</th><th>Payload</th><th>Trigger</th></tr>
+        <tr><td>Client &rarr; Server</td><td><code>start_session</code></td><td>patient: {name, age, gender}</td><td>User clicks Start</td></tr>
+        <tr><td>Client &rarr; Server</td><td><code>audio_chunk</code></td><td>audio_data: base64 WAV</td><td>Every 5s (AudioWorklet)</td></tr>
+        <tr><td>Client &rarr; Server</td><td><code>stop_session</code></td><td><em>none</em></td><td>User clicks Stop</td></tr>
+        <tr><td>Server &rarr; Client</td><td><code>extraction_update</code></td><td>extraction: {5 string fields}</td><td>After each chunk processed</td></tr>
+        <tr><td>Server &rarr; Client</td><td><code>error</code></td><td>message: string</td><td>Processing failure</td></tr>
+        <tr><td>Server &rarr; Client</td><td><code>session-started</code></td><td><em>none</em></td><td>Session created successfully</td></tr>
+        <tr><td>Server &rarr; Client</td><td><code>session-ended</code></td><td>reason?: string</td><td>Session stopped or disconnected</td></tr>
+    </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 6. AI/ML MODEL LAYER -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s6">
+    <div class="section-header">
+        <span class="section-num">06</span>
+        <h2>AI/ML Model Layer</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Provider Abstraction &mdash; Strategy Pattern</div>
+        <div class="mermaid">
+graph LR
+    subgraph ABSTRACTION["Service Layer"]
+        TS["TranscriptionService"]
+        ES["ExtractionService"]
+    end
+
+    subgraph STT_PROVIDERS["STT Providers"]
+        G["GroqWhisper<br/><i>whisper-large-v3</i><br/>FREE / 5x faster"]
+        O["OpenAIWhisper<br/><i>whisper-1</i><br/>$0.006/min"]
+        A["AzureWhisper<br/><i>deployment</i><br/>Enterprise SLA"]
+        M1["MockWhisper<br/><i>6 scripted responses</i><br/>Testing only"]
+    end
+
+    subgraph LLM_PROVIDERS["LLM Providers"]
+        AG["AzureGPT<br/><i>gpt-4.1-mini</i><br/>142-line system prompt"]
+        OG["OpenAIGPT<br/><i>gpt-4-turbo</i><br/>Generic prompt"]
+        M2["MockGPT<br/><i>keyword-based</i><br/>Testing only"]
+    end
+
+    TS -->|config: groq| G
+    TS -.->|config: openai| O
+    TS -.->|config: azure| A
+    TS -.->|config: mock| M1
+
+    ES -->|config: azure| AG
+    ES -.->|config: openai| OG
+    ES -.->|config: mock| M2
+
+    style ABSTRACTION fill:#1c2333,stroke:#bc8cff,color:#e6edf3
+    style STT_PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style LLM_PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+        </div>
+    </div>
+
+    <h3><span class="decorator">#</span> Extraction Prompt Engineering</h3>
+    <div class="callout callout-warn">
+        <h4>Zero-Hallucination Policy</h4>
+        <p>The 142-line Azure GPT system prompt enforces strict rules: <strong>ONLY extract what was EXPLICITLY
+        STATED</strong> in the transcript. Empty fields are preferred over inferred data. The prompt includes
+        multiple correct/incorrect examples for few-shot learning and explicit medicine consolidation rules
+        (replace partial mentions with complete prescriptions).</p>
+    </div>
+
+    <p>
+        Key prompt features: patient context injection, full transcript window, previous extraction for
+        incremental merging, forced JSON output schema with 5 keys, temperature 0.3 for consistency.
+    </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 7. CHROME EXTENSION ARCHITECTURE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s7">
+    <div class="section-header">
+        <span class="section-num">07</span>
+        <h2>Chrome Extension Architecture</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Extension Component Communication</div>
+        <div class="mermaid">
+graph TB
+    subgraph MEETING["Meeting Tab (meet.google.com / zoom.us)"]
+        CS["content.js<br/><i>Badge + Panel UI</i>"]
+        CSS["content.css<br/><i>Injected styles</i>"]
+        EXP["export.js<br/><i>PDF/Email/TXT</i>"]
+        JSPDF["jspdf.umd.min.js<br/><i>366KB bundled</i>"]
+    end
+
+    subgraph SW["Service Worker Context"]
+        BG2["background.js<br/><i>Orchestrator</i>"]
+    end
+
+    subgraph OSD["Offscreen Document"]
+        OS["offscreen.js<br/><i>Audio capture</i>"]
+        AWP["audio-worklet-processor.js<br/><i>Real-time audio thread</i>"]
+        WAV["wav-encoder.js<br/><i>PCM → WAV</i>"]
+    end
+
+    subgraph POPUP["Popup"]
+        PH["popup.html/js/css<br/><i>Settings: URL, Doctor, Clinic</i>"]
+    end
+
+    CS <-->|chrome.runtime<br/>messages| BG2
+    BG2 <-->|chrome.runtime<br/>messages| OS
+    BG2 -->|tabCapture<br/>streamId| OS
+    OS --> AWP
+    AWP --> WAV
+    PH -->|chrome.storage.local| BG2
+    BG2 <-->|WebSocket| BACKEND["Backend Server"]
+
+    style MEETING fill:#1a1f2e,stroke:#58a6ff,color:#e6edf3
+    style SW fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
+    style OSD fill:#1a1f2e,stroke:#d29922,color:#e6edf3
+    style POPUP fill:#1a1f2e,stroke:#bc8cff,color:#e6edf3
+        </div>
+    </div>
+
+    <h3><span class="decorator">#</span> Session State Machine</h3>
+    <div class="diagram-container">
+        <div class="diagram-label">Three-Phase UI State Machine</div>
+        <div class="mermaid">
+stateDiagram-v2
+    [*] --> BadgeOnly: Page load on meeting URL
+
+    BadgeOnly --> PreSession: Badge clicked
+    PreSession --> BadgeOnly: Panel closed
+
+    PreSession --> Recording: Start Session<br/>(validates patient form)
+    Recording --> PostSession: session-ended message
+
+    PostSession --> PreSession: + New Session clicked
+
+    state BadgeOnly {
+        [*] --> Detected: Blue glow badge
+    }
+
+    state PreSession {
+        [*] --> FormReady: Patient form enabled
+        FormReady --> Connecting: Start clicked
+        Connecting --> FormReady: Connection failed
+    }
+
+    state Recording {
+        [*] --> Active: Green pulse badge
+        Active --> Active: extraction_update
+    }
+
+    state PostSession {
+        [*] --> Editable: Cards → Textareas
+        Editable --> Exporting: Export button clicked
+        Exporting --> Editable: Export complete
+    }
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 8. FAULT TOLERANCE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s8">
+    <div class="section-header">
+        <span class="section-num">08</span>
+        <h2>Fault Tolerance &amp; Resilience</h2>
+    </div>
+
+    <div class="card-grid">
+        <div class="card">
+            <h4>WebSocket Disconnect</h4>
+            <p>If the WebSocket closes unexpectedly, the background worker sends <code>session-ended</code> with a reason to the content script. The UI transitions to post-session mode, preserving all extraction data captured so far. The doctor can still export.</p>
+            <span class="tag tag-red">Network</span>
+        </div>
+        <div class="card">
+            <h4>Transcription API Failure</h4>
+            <p>Errors are caught per-chunk and sent as <code>error</code> messages. The session continues &mdash; the failed chunk is skipped, and the next chunk includes context from prior successful transcriptions. No data loss.</p>
+            <span class="tag tag-orange">AI Provider</span>
+        </div>
+        <div class="card">
+            <h4>Extraction API Failure</h4>
+            <p>If GPT fails, the transcript chunk is still appended to the session. The next successful extraction will process the full accumulated transcript, recovering missed data from prior failed chunks.</p>
+            <span class="tag tag-orange">AI Provider</span>
+        </div>
+        <div class="card">
+            <h4>Audio Format Errors</h4>
+            <p>Groq provider implements a multi-format fallback chain: Ogg Opus &rarr; WAV &rarr; raw WebM. If all conversions fail, the error is logged and the chunk is skipped. Uses <code>pydub</code> for conversion.</p>
+            <span class="tag tag-orange">Audio</span>
+        </div>
+        <div class="card">
+            <h4>Microphone Unavailable</h4>
+            <p>If mic permission is denied, the system still captures tab audio. A <code>warning</code> message is sent to the UI showing "Recording (mic off)". The consultation is captured from the speaker only.</p>
+            <span class="tag tag-blue">Client</span>
+        </div>
+        <div class="card">
+            <h4>Extraction Deduplication</h4>
+            <p><code>ExtractionResult.merge()</code> performs bidirectional substring matching + line-level overlap detection. This prevents the accumulation of repeated information across chunks, even when the LLM regenerates prior data.</p>
+            <span class="tag tag-purple">Data Integrity</span>
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Error Propagation &amp; Recovery Flow</div>
+        <div class="mermaid">
+graph TD
+    CHUNK["Audio Chunk Received"] --> DECODE{"Base64<br/>Decode"}
+    DECODE -->|Success| TRANSCRIBE{"Transcribe<br/>API Call"}
+    DECODE -->|Failure| LOG_ERR1["Log error<br/>Skip chunk"]
+
+    TRANSCRIBE -->|Success| CHECK_LEN{"Transcript<br/>>50 chars?"}
+    TRANSCRIBE -->|API Error| SEND_ERR["Send error msg<br/>to client"]
+    SEND_ERR --> CONTINUE["Continue session<br/>Wait for next chunk"]
+
+    CHECK_LEN -->|Yes| EXTRACT{"Extract<br/>API Call"}
+    CHECK_LEN -->|No| SKIP["Skip extraction<br/>(too short)"]
+    SKIP --> CONTINUE
+
+    EXTRACT -->|Success| MERGE["Merge into<br/>session state"]
+    EXTRACT -->|API Error| SEND_ERR2["Send error msg<br/>Transcript still saved"]
+    SEND_ERR2 --> CONTINUE
+
+    MERGE --> SEND_UPDATE["Send extraction_update<br/>to client"]
+    SEND_UPDATE --> CONTINUE
+
+    LOG_ERR1 --> CONTINUE
+
+    style CONTINUE fill:#1c2333,stroke:#3fb950,color:#e6edf3
+    style SEND_ERR fill:#1c2333,stroke:#f85149,color:#e6edf3
+    style SEND_ERR2 fill:#1c2333,stroke:#f85149,color:#e6edf3
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 9. SCALABILITY STRATEGY -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s9">
+    <div class="section-header">
+        <span class="section-num">09</span>
+        <h2>Scalability Strategy</h2>
+    </div>
+
+    <h3><span class="decorator">#</span> Current State (MVP)</h3>
+    <p>
+        Single-process FastAPI server handling all WebSocket connections. In-memory session storage. Suitable
+        for <strong>~50 concurrent sessions</strong> on a single 4-core instance (bottleneck: external API
+        round-trips, not CPU).
+    </p>
+
+    <h3><span class="decorator">#</span> Horizontal Scaling Path</h3>
+    <div class="diagram-container">
+        <div class="diagram-label">Scaled Architecture (Future)</div>
+        <div class="mermaid">
+graph TB
+    subgraph CLIENTS["Clients (N doctors)"]
+        C1["Doctor 1<br/>Chrome Ext"]
+        C2["Doctor 2<br/>Chrome Ext"]
+        CN["Doctor N<br/>Chrome Ext"]
+    end
+
+    LB["Load Balancer<br/><i>Sticky sessions (WebSocket)</i>"]
+
+    subgraph WORKERS["Application Workers"]
+        W1["Worker 1<br/><i>FastAPI + Uvicorn</i>"]
+        W2["Worker 2<br/><i>FastAPI + Uvicorn</i>"]
+        WN["Worker N<br/><i>FastAPI + Uvicorn</i>"]
+    end
+
+    subgraph SHARED["Shared Infrastructure"]
+        REDIS["Redis<br/><i>Session store +<br/>pub/sub</i>"]
+        QUEUE["Task Queue<br/><i>Celery / Bull</i>"]
+        DB["PostgreSQL<br/><i>Session persistence +<br/>audit log</i>"]
+        S3["Object Storage<br/><i>Audio archive</i>"]
+    end
+
+    subgraph AI_POOL["AI Provider Pool"]
+        AI1["Groq API<br/><i>Rate limit: 100 RPM</i>"]
+        AI2["Azure OpenAI<br/><i>Provisioned throughput</i>"]
+    end
+
+    C1 & C2 & CN --> LB
+    LB --> W1 & W2 & WN
+    W1 & W2 & WN --> REDIS
+    W1 & W2 & WN --> QUEUE
+    QUEUE --> AI1 & AI2
+    W1 & W2 & WN --> DB
+    W1 & W2 & WN --> S3
+
+    style CLIENTS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style WORKERS fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
+    style SHARED fill:#1a1f2e,stroke:#58a6ff,color:#e6edf3
+    style AI_POOL fill:#1a1f2e,stroke:#bc8cff,color:#e6edf3
+        </div>
+    </div>
+
+    <h3><span class="decorator">#</span> Scaling Levers</h3>
+    <table>
+        <tr><th>Bottleneck</th><th>Current</th><th>Scaled Solution</th><th>Impact</th></tr>
+        <tr><td>Concurrent sessions</td><td><code>~50</code> (single process)</td><td>Horizontal workers behind LB with sticky sessions</td><td>Linear scale</td></tr>
+        <tr><td>Session state</td><td><code>In-memory dict</code></td><td>Redis with TTL-based cleanup</td><td>Shared state across workers</td></tr>
+        <tr><td>API rate limits</td><td><code>Single provider</code></td><td>Provider pool with round-robin / failover</td><td>Aggregate rate limit</td></tr>
+        <tr><td>Transcription throughput</td><td><code>Sequential per session</code></td><td>Async task queue (Celery) for chunk processing</td><td>Decouple capture from processing</td></tr>
+        <tr><td>Data persistence</td><td><code>None</code></td><td>PostgreSQL + object storage for audio archive</td><td>Audit trail, replay</td></tr>
+    </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 10. CONCURRENCY MODEL -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s10">
+    <div class="section-header">
+        <span class="section-num">10</span>
+        <h2>Concurrency Model</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Async Concurrency &mdash; Per-Session Sequential, Cross-Session Parallel</div>
+        <div class="mermaid">
+graph TB
+    subgraph UVICORN["Uvicorn ASGI Server (Single Process, Event Loop)"]
+        EL["asyncio Event Loop"]
+
+        subgraph S1["Session A (WebSocket 1)"]
+            direction LR
+            A1["chunk 1"] --> A2["chunk 2"] --> A3["chunk 3"]
+        end
+
+        subgraph S2["Session B (WebSocket 2)"]
+            direction LR
+            B1["chunk 1"] --> B2["chunk 2"] --> B3["chunk 3"]
+        end
+
+        subgraph S3["Session C (WebSocket 3)"]
+            direction LR
+            C1["chunk 1"] --> C2["chunk 2"]
+        end
+
+        EL --> S1 & S2 & S3
+    end
+
+    NOTE["Chunks within a session: SEQUENTIAL<br/>(preserves transcript ordering)<br/><br/>Sessions across connections: PARALLEL<br/>(async I/O, no blocking)"]
+
+    style UVICORN fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
+    style NOTE fill:#1c2333,stroke:#58a6ff,color:#e6edf3
+        </div>
+    </div>
+
+    <div class="callout callout-info">
+        <h4>Why Sequential Per-Session?</h4>
+        <p>Audio chunks must be transcribed and merged in order. If chunk 3 is processed before chunk 2,
+        the transcript would be garbled. The <code>await</code> on each transcribe + extract call ensures
+        correct ordering. Meanwhile, other sessions make progress on their own chunks concurrently via the
+        async event loop.</p>
+    </div>
+
+    <h3><span class="decorator">#</span> Thread Model</h3>
+    <table>
+        <tr><th>Component</th><th>Thread/Process</th><th>Why</th></tr>
+        <tr><td>Uvicorn server</td><td>Main process, single event loop</td><td>ASGI async handles thousands of connections</td></tr>
+        <tr><td>AudioWorklet (client)</td><td>Dedicated audio rendering thread</td><td>Real-time priority, cannot block or be blocked</td></tr>
+        <tr><td>Offscreen document</td><td>Separate renderer process</td><td>Chrome isolates extension contexts</td></tr>
+        <tr><td>Service worker</td><td>Background thread</td><td>Chrome Manifest v3 lifecycle management</td></tr>
+        <tr><td>AI API calls</td><td>Non-blocking I/O (httpx/aiohttp)</td><td>Async clients yield to event loop during network wait</td></tr>
+    </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 11. SECURITY & COMPLIANCE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s11">
+    <div class="section-header">
+        <span class="section-num">11</span>
+        <h2>Security &amp; Compliance</h2>
+    </div>
+
+    <div class="card-grid">
+        <div class="card">
+            <h4>No Data Persistence</h4>
+            <p>Sessions are in-memory only. Audio bytes are never written to disk. Transcripts exist only for the duration of the WebSocket connection. Server restart = complete data wipe. This is a <strong>deliberate HIPAA-friendly design</strong>.</p>
+            <span class="tag tag-green">Privacy</span>
+        </div>
+        <div class="card">
+            <h4>Client-Side Export</h4>
+            <p>PDF generation, clipboard, and TXT export happen entirely in the browser via jsPDF. No patient data leaves the doctor's machine for export purposes. Gmail compose URL is opened locally.</p>
+            <span class="tag tag-green">Privacy</span>
+        </div>
+        <div class="card">
+            <h4>API Key Isolation</h4>
+            <p>AI provider keys are stored in server-side <code>.env</code> files only. The Chrome extension never sees API keys &mdash; it communicates exclusively via WebSocket to the backend.</p>
+            <span class="tag tag-blue">Secrets</span>
+        </div>
+        <div class="card">
+            <h4>Extension Permissions</h4>
+            <p>Manifest v3 with minimal permissions: <code>tabCapture</code>, <code>activeTab</code>, <code>offscreen</code>, <code>storage</code>. No <code>host_permissions</code>, no background network access beyond the configured server URL.</p>
+            <span class="tag tag-blue">Least Privilege</span>
+        </div>
+        <div class="card">
+            <h4>Input Validation</h4>
+            <p>Pydantic models validate all inputs: patient name (1-200 chars), age (0-150), gender (1-50 chars). WebSocket messages are JSON-parsed with type checking. Base64 audio is decoded in a try-catch.</p>
+            <span class="tag tag-orange">Validation</span>
+        </div>
+        <div class="card">
+            <h4>AI Safety Guardrails</h4>
+            <p>The extraction prompt explicitly states: <em>"You are NOT a medical assistant. You are a TRANSCRIPTION assistant."</em> Zero hallucination policy &mdash; only extract what was explicitly stated. No diagnostic inference.</p>
+            <span class="tag tag-red">Medical Safety</span>
+        </div>
+    </div>
+
+    <div class="callout callout-danger">
+        <h4>Production Compliance Gaps (to address before deployment)</h4>
+        <p>
+            &bull; <strong>TLS/WSS:</strong> WebSocket must be upgraded to WSS for production (currently ws://)<br/>
+            &bull; <strong>Authentication:</strong> No auth on WebSocket endpoint &mdash; needs JWT or API key<br/>
+            &bull; <strong>Audit logging:</strong> No persistent audit trail of who accessed what data<br/>
+            &bull; <strong>BAA:</strong> Business Associate Agreements needed with AI providers for HIPAA<br/>
+            &bull; <strong>Encryption at rest:</strong> If persistence is added, data must be encrypted
+        </p>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 12. OBSERVABILITY -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s12">
+    <div class="section-header">
+        <span class="section-num">12</span>
+        <h2>Observability &amp; Monitoring</h2>
+    </div>
+
+    <h3><span class="decorator">#</span> Current Logging Strategy</h3>
+    <table>
+        <tr><th>Event</th><th>Level</th><th>Content</th></tr>
+        <tr><td>Session start/end</td><td><code>INFO</code></td><td>Session ID, patient name, duration</td></tr>
+        <tr><td>Audio chunk received</td><td><code>INFO</code></td><td>Chunk size in bytes</td></tr>
+        <tr><td>Transcription success</td><td><code>INFO</code></td><td>Transcript length, provider, latency</td></tr>
+        <tr><td>Extraction changes</td><td><code>INFO</code></td><td>Which fields were updated</td></tr>
+        <tr><td>API errors</td><td><code>ERROR</code></td><td>Full traceback, provider, request details</td></tr>
+        <tr><td>Format conversion</td><td><code>DEBUG</code></td><td>Audio format chain (Groq provider)</td></tr>
+    </table>
+
+    <h3><span class="decorator">#</span> Key Metrics to Monitor (Production)</h3>
+    <div class="card-grid">
+        <div class="card">
+            <h4>P95 Extraction Latency</h4>
+            <p>Time from audio_chunk received to extraction_update sent. Target: &lt; 6s. Alert if &gt; 10s for 5 consecutive chunks.</p>
+        </div>
+        <div class="card">
+            <h4>Active Session Count</h4>
+            <p>Number of concurrent WebSocket connections with active sessions. Capacity planning metric. Alert at 80% of provisioned capacity.</p>
+        </div>
+        <div class="card">
+            <h4>API Error Rate</h4>
+            <p>Percentage of transcription/extraction API calls that fail. Target: &lt; 1%. Alert at 5%. Indicates provider issues or rate limiting.</p>
+        </div>
+        <div class="card">
+            <h4>Empty Extraction Rate</h4>
+            <p>Percentage of chunks where extraction returns all-empty. High rates indicate audio quality issues or prompt degradation.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 13. COST ANALYSIS -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s13">
+    <div class="section-header">
+        <span class="section-num">13</span>
+        <h2>Cost Analysis</h2>
+    </div>
+
+    <p>Estimated for <strong>1,000 consultations/month</strong>, average 10 minutes each, 120 audio chunks per consultation.</p>
+
+    <table>
+        <tr><th>Service</th><th>Provider</th><th>Unit Cost</th><th>Usage/Month</th><th>Monthly Cost</th></tr>
+        <tr>
+            <td>Transcription</td><td><code>Groq Whisper</code></td>
+            <td>Free tier / $0.002/min</td><td>~167 hours</td>
+            <td><strong>$0 &ndash; $12</strong></td>
+        </tr>
+        <tr>
+            <td>Extraction</td><td><code>Azure GPT-4.1-mini</code></td>
+            <td>~$0.15/1M input tokens</td><td>~120K chunks</td>
+            <td><strong>~$55</strong></td>
+        </tr>
+        <tr>
+            <td>Server</td><td><code>Single VPS</code></td>
+            <td>4 vCPU, 8GB RAM</td><td>Always-on</td>
+            <td><strong>$20&ndash;40</strong></td>
+        </tr>
+        <tr style="border-top: 2px solid var(--border);">
+            <td colspan="4"><strong>Total</strong></td>
+            <td><strong style="color: var(--accent-green);">$67&ndash;107/month</strong></td>
+        </tr>
+    </table>
+
+    <div class="callout callout-success">
+        <h4>Cost per Consultation: ~$0.07</h4>
+        <p>At the current provider configuration, each 10-minute consultation costs approximately 7 cents. Switching to Groq for extraction (Llama-3.1) could reduce this to under $0.02.</p>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- 14. FUTURE ROADMAP -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section" id="s14">
+    <div class="section-header">
+        <span class="section-num">14</span>
+        <h2>Future Roadmap</h2>
+    </div>
+
+    <div class="flow-steps">
+        <div class="flow-step" data-step="1">
+            <div class="flow-step-content">
+                <h4>Persistent Session Storage</h4>
+                <p>PostgreSQL for consultation history. Encrypted at rest. Enables consultation replay, analytics, and multi-device access.</p>
+                <span class="tech">PostgreSQL + SQLAlchemy + Alembic</span>
+            </div>
+        </div>
+        <div class="flow-step" data-step="2">
+            <div class="flow-step-content">
+                <h4>Authentication &amp; Multi-Tenancy</h4>
+                <p>JWT-based auth for WebSocket. Doctor accounts with per-clinic isolation. Role-based access (doctor, admin).</p>
+                <span class="tech">Auth0 / Supabase Auth + Row-Level Security</span>
+            </div>
+        </div>
+        <div class="flow-step" data-step="3">
+            <div class="flow-step-content">
+                <h4>Speaker Diarization</h4>
+                <p>Distinguish doctor vs. patient speech. Enables better extraction prompting and separate transcript channels.</p>
+                <span class="tech">Pyannote / WhisperX diarization pipeline</span>
+            </div>
+        </div>
+        <div class="flow-step" data-step="4">
+            <div class="flow-step-content">
+                <h4>Real-Time Streaming STT</h4>
+                <p>Replace 5-second chunked transcription with streaming WebSocket STT for sub-second transcript updates.</p>
+                <span class="tech">Deepgram Streaming / Groq Realtime API</span>
+            </div>
+        </div>
+        <div class="flow-step" data-step="5">
+            <div class="flow-step-content">
+                <h4>EHR Integration</h4>
+                <p>FHIR-compliant export to Electronic Health Record systems. Direct push to hospital EMR via HL7 FHIR R4 APIs.</p>
+                <span class="tech">FHIR R4 + SMART on FHIR</span>
+            </div>
+        </div>
+        <div class="flow-step" data-step="6">
+            <div class="flow-step-content">
+                <h4>On-Premise / Edge Deployment</h4>
+                <p>Self-hosted Whisper + local LLM for zero-data-egress deployments. Addresses hospital network policies.</p>
+                <span class="tech">Whisper.cpp + Llama.cpp / Ollama</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr>
+
+<div style="text-align: center; padding: 24px 0 48px; color: var(--text-muted); font-size: 13px;">
+    drTranscribe System Design v2.0 &mdash; Confidential &mdash; Loop Health Engineering
+</div>
+
+</div><!-- /container -->
+
+<!-- Mermaid.js for diagrams -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        themeVariables: {
+            darkMode: true,
+            background: '#161b22',
+            primaryColor: '#1c2333',
+            primaryTextColor: '#e6edf3',
+            primaryBorderColor: '#30363d',
+            lineColor: '#58a6ff',
+            secondaryColor: '#1a1f2e',
+            tertiaryColor: '#1c2333',
+            noteBkgColor: '#1c2333',
+            noteTextColor: '#e6edf3',
+            noteBorderColor: '#30363d',
+            actorBkg: '#1c2333',
+            actorTextColor: '#e6edf3',
+            actorBorder: '#58a6ff',
+            signalColor: '#58a6ff',
+            labelBoxBkgColor: '#1c2333',
+            labelTextColor: '#e6edf3'
+        },
+        flowchart: { curve: 'basis', padding: 16 },
+        sequence: { actorMargin: 40, messageMargin: 30 }
+    });
+</script>
+
+</body>
+</html>

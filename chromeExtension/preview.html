@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>drTranscribe v2 - Live Simulation Preview</title>
+    <style>
+        /* Simulated Google Meet background */
+        body {
+            margin: 0;
+            background: #202124;
+            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .fake-meet {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .fake-meet-top {
+            height: 56px;
+            background: #202124;
+            border-bottom: 1px solid #3c4043;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            color: #e8eaed;
+            font-size: 16px;
+            gap: 16px;
+        }
+        .fake-meet-top svg { width: 24px; height: 24px; fill: #e8eaed; }
+        .fake-meet-code { color: #5f6368; font-size: 14px; font-family: 'Google Sans', monospace; }
+        .fake-meet-time { margin-left: auto; color: #9aa0a6; font-size: 13px; }
+
+        .fake-meet-video {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 24px;
+            padding-right: 360px;
+        }
+        .fake-participant {
+            flex: 1;
+            max-width: 560px;
+            aspect-ratio: 16/10;
+            background: #3c4043;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #9aa0a6;
+            gap: 12px;
+            position: relative;
+        }
+        .fake-avatar {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: #fff;
+            font-weight: 500;
+        }
+        .fake-avatar.doctor { background: #4285f4; }
+        .fake-avatar.patient { background: #34a853; }
+        .fake-name { font-size: 14px; color: #e8eaed; }
+        .fake-speaking-ring {
+            position: absolute;
+            inset: -3px;
+            border-radius: 11px;
+            border: 3px solid transparent;
+            transition: border-color 0.3s;
+        }
+        .fake-speaking-ring.active {
+            border-color: #4285f4;
+        }
+
+        /* Live conversation transcript */
+        .fake-transcript {
+            position: fixed;
+            bottom: 88px;
+            left: 50%;
+            transform: translateX(calc(-50% - 170px));
+            background: rgba(32, 33, 36, 0.9);
+            border-radius: 8px;
+            padding: 10px 16px;
+            color: #e8eaed;
+            font-size: 14px;
+            max-width: 600px;
+            text-align: center;
+            line-height: 1.5;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 100;
+        }
+        .fake-transcript.visible { opacity: 1; }
+        .fake-transcript .speaker { color: #8ab4f8; font-weight: 500; }
+
+        .fake-meet-bar {
+            height: 72px;
+            background: #202124;
+            border-top: 1px solid #3c4043;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding-right: 360px;
+        }
+        .fake-meet-btn {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: #3c4043;
+            border: none;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .fake-meet-btn svg { width: 20px; height: 20px; fill: #e8eaed; }
+        .fake-meet-btn.red { background: #ea4335; }
+
+        /* ─── SIMULATION CONTROLS (bottom-left) ─── */
+        .sim-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 999999999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .sim-controls button {
+            padding: 10px 20px;
+            border: 1px solid #45475a;
+            border-radius: 8px;
+            background: #313244;
+            color: #cdd6f4;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .sim-controls button:hover { background: #45475a; }
+        .sim-controls button.sim-active {
+            background: #a6e3a1;
+            color: #1e1e2e;
+            border-color: #a6e3a1;
+        }
+        .sim-controls button.sim-stop {
+            background: #f38ba8;
+            color: #1e1e2e;
+            border-color: #f38ba8;
+        }
+        .sim-timer {
+            font-size: 12px;
+            color: #6c7086;
+            text-align: center;
+            font-family: monospace;
+        }
+        .sim-label {
+            font-size: 11px;
+            color: #585b70;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           ACTUAL EXTENSION CSS (from content.css)
+           ═══════════════════════════════════════════════════════════ */
+
+        /* Badge */
+        .drt-badge {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #1e1e2e;
+            border: 2px solid #313244;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            color: #89b4fa;
+            cursor: pointer;
+            z-index: 2147483646;
+            transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
+            user-select: none;
+        }
+        .drt-badge:hover { transform: scale(1.1); }
+        .drt-badge-detected {
+            box-shadow: 0 0 12px rgba(137, 180, 250, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        .drt-badge-active {
+            border-color: #a6e3a1;
+            box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+            animation: drt-badge-pulse 2s ease-in-out infinite;
+        }
+        @keyframes drt-badge-pulse {
+            0%, 100% { box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(166, 227, 161, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3); }
+        }
+
+        /* Panel */
+        .drt-panel {
+            position: fixed;
+            top: 80px;
+            right: 16px;
+            width: 320px;
+            max-height: calc(100vh - 100px);
+            background: #1e1e2e;
+            border: 1px solid #313244;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            z-index: 2147483647;
+            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+            font-size: 13px;
+            color: #cdd6f4;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: box-shadow 0.2s;
+        }
+        .drt-panel:hover { box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6); }
+
+        .drt-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #181825;
+            cursor: grab;
+            user-select: none;
+            border-bottom: 1px solid #313244;
+        }
+        .drt-header:active { cursor: grabbing; }
+        .drt-brand { display: flex; align-items: center; gap: 8px; }
+        .drt-logo { font-weight: 700; font-size: 16px; color: #89b4fa; letter-spacing: -0.5px; }
+        .drt-status { font-size: 11px; color: #6c7086; padding: 2px 8px; border-radius: 10px; background: #313244; }
+        .drt-status-connecting { color: #f9e2af; background: #433a27; }
+        .drt-status-recording { color: #a6e3a1; background: #273a27; animation: drt-pulse 1.5s ease-in-out infinite; }
+        .drt-status-error { color: #f38ba8; background: #3a2727; }
+        @keyframes drt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .drt-controls { display: flex; gap: 4px; }
+        .drt-btn-icon {
+            background: none; border: none; color: #6c7086; cursor: pointer;
+            padding: 4px 6px; border-radius: 6px; font-size: 12px; line-height: 1;
+            transition: background 0.15s, color 0.15s;
+        }
+        .drt-btn-icon:hover { background: #313244; color: #cdd6f4; }
+
+        .drt-body {
+            overflow-y: auto; max-height: calc(100vh - 160px); padding: 12px;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .drt-body::-webkit-scrollbar { width: 4px; }
+        .drt-body::-webkit-scrollbar-track { background: transparent; }
+        .drt-body::-webkit-scrollbar-thumb { background: #45475a; border-radius: 2px; }
+
+        .drt-section-title {
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; color: #6c7086; margin-bottom: 8px;
+        }
+        .drt-form-row { margin-bottom: 8px; }
+        .drt-form-row-split { display: flex; gap: 8px; }
+        .drt-input {
+            width: 100%; padding: 8px 10px; background: #313244;
+            border: 1px solid #45475a; border-radius: 8px; color: #cdd6f4;
+            font-size: 13px; font-family: inherit; outline: none;
+            transition: border-color 0.15s; box-sizing: border-box;
+        }
+        .drt-input:focus { border-color: #89b4fa; }
+        .drt-input:disabled { opacity: 0.5; cursor: not-allowed; }
+        .drt-input-small { width: 80px; flex-shrink: 0; }
+        .drt-input option { background: #313244; color: #cdd6f4; }
+        .drt-form-actions { display: flex; gap: 8px; }
+        .drt-btn {
+            flex: 1; padding: 8px 12px; border: none; border-radius: 8px;
+            font-size: 13px; font-weight: 600; font-family: inherit;
+            cursor: pointer; transition: background 0.15s, opacity 0.15s;
+        }
+        .drt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .drt-btn-start { background: #89b4fa; color: #1e1e2e; }
+        .drt-btn-start:hover:not(:disabled) { background: #74a8fc; }
+        .drt-btn-stop { background: #f38ba8; color: #1e1e2e; }
+        .drt-btn-stop:hover:not(:disabled) { background: #f07090; }
+
+        .drt-results { display: flex; flex-direction: column; gap: 8px; }
+        .drt-card {
+            background: #181825; border: 1px solid #313244; border-radius: 8px;
+            padding: 10px 12px; transition: border-color 0.2s, background 0.3s;
+        }
+        .drt-card:hover { border-color: #45475a; }
+        .drt-card.drt-card-updating {
+            background: #1a1a2e;
+            border-color: #89b4fa40;
+        }
+        .drt-card-title {
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; color: #89b4fa; margin-bottom: 4px;
+        }
+        .drt-card-content {
+            font-size: 13px; line-height: 1.5; color: #cdd6f4;
+            white-space: pre-wrap; word-break: break-word;
+        }
+        .drt-card-content.drt-empty { color: #585b70; font-style: italic; }
+
+        /* Post-session styles */
+        .drt-card-textarea {
+            width: 100%; min-height: 60px; padding: 8px 10px;
+            background: #313244; border: 1px solid #45475a; border-radius: 6px;
+            color: #cdd6f4; font-size: 13px; font-family: inherit;
+            line-height: 1.5; outline: none; resize: vertical;
+            box-sizing: border-box; transition: border-color 0.15s;
+        }
+        .drt-card-textarea:focus { border-color: #89b4fa; }
+        .drt-card-textarea::placeholder { color: #585b70; font-style: italic; }
+
+        .drt-export-bar {
+            padding-top: 12px; margin-top: 4px;
+            border-top: 1px solid #313244;
+        }
+        .drt-export-actions {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 6px; margin-bottom: 8px;
+        }
+        .drt-btn-export {
+            padding: 8px 10px; background: #313244; border: 1px solid #45475a;
+            border-radius: 8px; color: #cdd6f4; font-size: 12px; font-weight: 600;
+            font-family: inherit; cursor: pointer;
+            transition: background 0.15s, border-color 0.15s; text-align: center;
+        }
+        .drt-btn-export:hover { background: #45475a; border-color: #585b70; }
+        .drt-btn-export-primary {
+            background: #89b4fa; color: #1e1e2e; border-color: #89b4fa;
+        }
+        .drt-btn-export-primary:hover { background: #74a8fc; border-color: #74a8fc; }
+
+        .drt-btn-new-session {
+            width: 100%; padding: 8px 12px; background: transparent;
+            border: 1px dashed #45475a; border-radius: 8px; color: #6c7086;
+            font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .drt-btn-new-session:hover {
+            background: #313244; color: #cdd6f4; border-color: #585b70;
+        }
+
+        .drt-toast {
+            position: fixed; bottom: 80px; right: 24px;
+            padding: 10px 20px; background: #313244; border: 1px solid #45475a;
+            border-radius: 8px; color: #cdd6f4;
+            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+            font-size: 13px; font-weight: 500; z-index: 2147483647;
+            opacity: 0; transform: translateY(10px);
+            transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+        }
+        .drt-toast-visible { opacity: 1; transform: translateY(0); }
+
+        .drt-input[type="number"]::-webkit-inner-spin-button,
+        .drt-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .drt-input[type="number"] { -moz-appearance: textfield; }
+    </style>
+</head>
+<body>
+
+    <!-- Simulated Google Meet -->
+    <div class="fake-meet">
+        <div class="fake-meet-top">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span>Google Meet</span>
+            <span class="fake-meet-code">rxj-knwb-yzm</span>
+            <span class="fake-meet-time" id="meet-time">0:00</span>
+        </div>
+        <div class="fake-meet-video">
+            <div class="fake-participant" id="doctor-tile">
+                <div class="fake-speaking-ring" id="doctor-ring"></div>
+                <div class="fake-avatar doctor">D</div>
+                <span class="fake-name">Dr. Priya Mehta</span>
+            </div>
+            <div class="fake-participant" id="patient-tile">
+                <div class="fake-speaking-ring" id="patient-ring"></div>
+                <div class="fake-avatar patient">R</div>
+                <span class="fake-name">Rahul Sharma</span>
+            </div>
+        </div>
+        <div class="fake-meet-bar">
+            <button class="fake-meet-btn"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></button>
+            <button class="fake-meet-btn"><svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg></button>
+            <button class="fake-meet-btn red"><svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" fill="#fff"/></svg></button>
+            <button class="fake-meet-btn"><svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></button>
+            <button class="fake-meet-btn"><svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></button>
+        </div>
+    </div>
+
+    <!-- Live conversation subtitle -->
+    <div class="fake-transcript" id="transcript-bar"></div>
+
+    <!-- ═══ drTranscribe BADGE ═══ -->
+    <div class="drt-badge drt-badge-detected" id="drt-badge" title="drTranscribe - Click to open">drT</div>
+
+    <!-- ═══ drTranscribe PANEL (initially hidden) ═══ -->
+    <div class="drt-panel" id="drt-panel" style="display: none;">
+        <div class="drt-header" id="drt-header">
+            <div class="drt-brand">
+                <span class="drt-logo">drT</span>
+                <span class="drt-status" id="drt-status">Ready</span>
+            </div>
+            <div class="drt-controls">
+                <button class="drt-btn-icon" id="drt-collapse" title="Collapse">&#x2015;</button>
+                <button class="drt-btn-icon" id="drt-close" title="Close">&#x2715;</button>
+            </div>
+        </div>
+        <div class="drt-body" id="drt-body">
+            <div class="drt-section drt-patient-form">
+                <div class="drt-section-title">Patient Info</div>
+                <div class="drt-form-row">
+                    <input type="text" id="drt-patient-name" class="drt-input" placeholder="Patient Name" />
+                </div>
+                <div class="drt-form-row drt-form-row-split">
+                    <input type="number" id="drt-patient-age" class="drt-input drt-input-small" placeholder="Age" min="0" max="150" />
+                    <select id="drt-patient-gender" class="drt-input">
+                        <option value="" disabled selected>Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="drt-form-row drt-form-actions" id="drt-session-actions">
+                    <button id="drt-start-btn" class="drt-btn drt-btn-start">Start Session</button>
+                    <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>Stop</button>
+                </div>
+            </div>
+            <div class="drt-section drt-results" id="drt-results">
+                <div class="drt-card" id="card-chief">
+                    <div class="drt-card-title">Chief Complaint</div>
+                    <div class="drt-card-content drt-empty" id="drt-chief-complaint">Waiting for session...</div>
+                </div>
+                <div class="drt-card" id="card-diagnosis">
+                    <div class="drt-card-title">Diagnosis</div>
+                    <div class="drt-card-content drt-empty" id="drt-diagnosis">Waiting for session...</div>
+                </div>
+                <div class="drt-card" id="card-medicine">
+                    <div class="drt-card-title">Medicine</div>
+                    <div class="drt-card-content drt-empty" id="drt-medicine">Waiting for session...</div>
+                </div>
+                <div class="drt-card" id="card-advice">
+                    <div class="drt-card-title">Advice</div>
+                    <div class="drt-card-content drt-empty" id="drt-advice">Waiting for session...</div>
+                </div>
+                <div class="drt-card" id="card-nextsteps">
+                    <div class="drt-card-title">Next Steps</div>
+                    <div class="drt-card-content drt-empty" id="drt-next-steps">Waiting for session...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="drt-toast" id="drt-toast"></div>
+
+    <!-- Simulation controls -->
+    <div class="sim-controls">
+        <div class="sim-label">Simulation v2</div>
+        <button id="sim-btn" onclick="toggleSimulation()">Play Full Demo</button>
+        <button onclick="resetAll()">Reset</button>
+        <div class="sim-timer" id="sim-timer"></div>
+    </div>
+
+    <script>
+        // ─── Load jsPDF dynamically (works on file:// too) ──────
+        (function loadJsPDF() {
+            const script = document.createElement('script');
+            script.src = 'jspdf.umd.min.js';
+            script.onload = () => console.log('[Preview] jsPDF loaded');
+            script.onerror = () => console.warn('[Preview] jsPDF failed to load - PDF export disabled');
+            document.head.appendChild(script);
+        })();
+
+        // ─── Inline export helpers (no external deps needed) ────
+        const PREVIEW_FIELD_KEYS = ['chief_complaint', 'diagnosis', 'medicine', 'advice', 'next_steps'];
+        const PREVIEW_FIELD_LABELS = {
+            chief_complaint: 'Chief Complaint', diagnosis: 'Diagnosis',
+            medicine: 'Medicine', advice: 'Advice', next_steps: 'Next Steps'
+        };
+
+        function previewGetEditedData() {
+            const data = {};
+            for (const key of PREVIEW_FIELD_KEYS) {
+                const el = document.getElementById('drt-edit-' + key);
+                data[key] = el ? el.value.trim() : '';
+            }
+            return data;
+        }
+
+        function previewDateStr() {
+            return new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        function previewTimestamp() {
+            return new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function previewFormatText(patient) {
+            const data = previewGetEditedData();
+            const date = previewDateStr();
+            const sep = '\u2550'.repeat(39);
+            const thin = '\u2500'.repeat(39);
+            const lines = [sep, '        CONSULTATION NOTES', sep, 'Date: ' + date, '',
+                'PATIENT DETAILS', thin,
+                'Name: ' + (patient.name||'-') + ' | Age: ' + (patient.age||'-') + ' | Gender: ' + (patient.gender||'-'), ''];
+            for (const key of PREVIEW_FIELD_KEYS) {
+                if (data[key]) { lines.push(PREVIEW_FIELD_LABELS[key].toUpperCase(), thin, data[key], ''); }
+            }
+            lines.push(sep, 'Generated by drTranscribe');
+            return lines.join('\n');
+        }
+
+        function previewExportPDF(patient, doctorInfo) {
+            const jsPDF = window.jspdf && window.jspdf.jsPDF;
+            if (!jsPDF) {
+                showToast('PDF library loading... try again in a moment');
+                // Try loading again
+                const s = document.createElement('script');
+                s.src = 'jspdf.umd.min.js';
+                document.head.appendChild(s);
+                return;
+            }
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pw = doc.internal.pageSize.getWidth();
+            const ph = doc.internal.pageSize.getHeight();
+            const m = 20;
+            const cw = pw - m * 2;
+            let y = m;
+            const data = previewGetEditedData();
+            const date = previewDateStr();
+
+            function checkBreak(h) { if (y + h > ph - 25) { doc.addPage(); y = m; } }
+            function writeWrap(text, x, sy, mw, lh) {
+                const lines = doc.splitTextToSize(text, mw);
+                for (const l of lines) { checkBreak(lh); doc.text(l, x, sy); sy += lh; }
+                return sy;
+            }
+
+            const dn = (doctorInfo && doctorInfo.doctorName) || '';
+            const cn = (doctorInfo && doctorInfo.clinicName) || '';
+            if (dn) { doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text(dn, m, y); y += 7; }
+            if (cn) { doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(100,100,100); doc.text(cn, m, y); y += 5; }
+            doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(100,100,100);
+            doc.text('Date: ' + date, pw - m, dn ? m : y, { align: 'right' }); doc.setTextColor(0,0,0);
+            if (dn || cn) y += 3;
+            doc.setDrawColor(180,180,180); doc.setLineWidth(0.5); doc.line(m, y, pw - m, y); y += 8;
+            doc.setFont('helvetica','normal'); doc.setFontSize(11);
+            doc.text('Patient: ' + (patient.name||'-'), m, y);
+            doc.text('Age: ' + (patient.age||'-') + '    Gender: ' + (patient.gender||'-'), m + 90, y); y += 10;
+            doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.text('Rx', m, y); y += 10;
+            doc.setFontSize(11);
+            for (const key of PREVIEW_FIELD_KEYS) {
+                const val = data[key]; if (!val) continue;
+                checkBreak(15);
+                doc.setFont('helvetica','bold'); doc.setFontSize(11);
+                doc.text(PREVIEW_FIELD_LABELS[key].toUpperCase(), m, y); y += 6;
+                doc.setFont('helvetica','normal'); doc.setFontSize(10);
+                y = writeWrap(val, m, y, cw, 5); y += 6;
+            }
+            doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
+            doc.text('Generated by drTranscribe | ' + previewTimestamp(), m, ph - 10);
+            const safeName = (patient.name || 'patient').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+            doc.save('prescription_' + safeName + '_' + date.replace(/\s/g, '-') + '.pdf');
+        }
+
+        function previewExportTXT(patient) {
+            const text = previewFormatText(patient);
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const safeName = (patient.name || 'patient').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+            a.download = 'consultation_' + safeName + '_' + previewDateStr().replace(/\s/g, '-') + '.txt';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+        }
+
+        // ─── Element refs ────────────────────────────────────────
+        const statusEl = document.getElementById('drt-status');
+        const bodyEl = document.getElementById('drt-body');
+        const startBtn = document.getElementById('drt-start-btn');
+        const stopBtn = document.getElementById('drt-stop-btn');
+        const nameInput = document.getElementById('drt-patient-name');
+        const ageInput = document.getElementById('drt-patient-age');
+        const genderInput = document.getElementById('drt-patient-gender');
+        const transcriptBar = document.getElementById('transcript-bar');
+        const meetTime = document.getElementById('meet-time');
+        const doctorRing = document.getElementById('doctor-ring');
+        const patientRing = document.getElementById('patient-ring');
+        const simBtn = document.getElementById('sim-btn');
+        const simTimer = document.getElementById('sim-timer');
+        const badge = document.getElementById('drt-badge');
+        const panel = document.getElementById('drt-panel');
+        const sessionActions = document.getElementById('drt-session-actions');
+
+        // ─── Badge click -> toggle panel ────────────────────────
+        badge.addEventListener('click', () => {
+            if (panel.style.display === 'none') {
+                panel.style.display = 'flex';
+            } else {
+                panel.style.display = 'none';
+            }
+        });
+
+        // ─── Dragging ────────────────────────────────────────────
+        const header = document.getElementById('drt-header');
+        let isDragging = false, dragX = 0, dragY = 0;
+        header.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.drt-btn-icon')) return;
+            isDragging = true;
+            dragX = e.clientX - panel.offsetLeft;
+            dragY = e.clientY - panel.offsetTop;
+            panel.style.transition = 'none';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            panel.style.left = Math.max(0, Math.min(innerWidth - panel.offsetWidth, e.clientX - dragX)) + 'px';
+            panel.style.top = Math.max(0, Math.min(innerHeight - panel.offsetHeight, e.clientY - dragY)) + 'px';
+            panel.style.right = 'auto';
+        });
+        document.addEventListener('mouseup', () => { isDragging = false; panel.style.transition = ''; });
+
+        // Collapse
+        let isCollapsed = false;
+        document.getElementById('drt-collapse').addEventListener('click', () => {
+            isCollapsed = !isCollapsed;
+            bodyEl.style.display = isCollapsed ? 'none' : '';
+            document.getElementById('drt-collapse').innerHTML = isCollapsed ? '&#x2B1C;' : '&#x2015;';
+        });
+
+        // Close
+        document.getElementById('drt-close').addEventListener('click', () => {
+            panel.style.display = 'none';
+        });
+
+        // ═══════════════════════════════════════════════════════════
+        // SIMULATION ENGINE v2
+        // Full flow: badge -> panel -> recording -> post-session
+        // ═══════════════════════════════════════════════════════════
+
+        let simRunning = false;
+        let simTimeouts = [];
+        let simElapsed = 0;
+        let simInterval = null;
+        let sessionPhase = 'pre'; // pre | recording | post
+
+        const CONVERSATION = [
+            {
+                time: 0,
+                speaker: 'doctor',
+                dialogue: 'Good morning Rahul ji, how are you feeling today? What brings you in?',
+                extraction: null
+            },
+            {
+                time: 5,
+                speaker: 'patient',
+                dialogue: 'Doctor, I have been having a very bad headache for the last 3 days. It is worse when I wake up in the morning.',
+                extraction: {
+                    chief_complaint: 'Headache for 3 days, worse in the morning.',
+                    diagnosis: '', medicine: '', advice: '', next_steps: ''
+                },
+                updatedCards: ['chief']
+            },
+            {
+                time: 10,
+                speaker: 'doctor',
+                dialogue: 'I see. Is there any nausea or vomiting? Any sensitivity to light?',
+                extraction: null
+            },
+            {
+                time: 15,
+                speaker: 'patient',
+                dialogue: 'Yes, mild nausea is there but no vomiting. Light bothers me a little. Also feeling some neck stiffness.',
+                extraction: {
+                    chief_complaint: 'Headache for 3 days, worse in the morning. Associated with mild nausea and photosensitivity. Neck stiffness present. No vomiting.',
+                    diagnosis: '', medicine: '', advice: '', next_steps: ''
+                },
+                updatedCards: ['chief']
+            },
+            {
+                time: 20,
+                speaker: 'doctor',
+                dialogue: 'Any history of migraine in your family? Have you had any head injury recently?',
+                extraction: null
+            },
+            {
+                time: 25,
+                speaker: 'patient',
+                dialogue: 'No head injury. But my mother used to get migraines. I have been working very long hours on my laptop lately.',
+                extraction: {
+                    chief_complaint: 'Headache for 3 days, worse in the morning. Associated with mild nausea and photosensitivity. Neck stiffness present. No vomiting. No history of trauma. Family history of migraine (mother). Prolonged screen exposure.',
+                    diagnosis: 'Tension-type headache, possibly migraine without aura. Rule out cervicogenic headache.',
+                    medicine: '', advice: '', next_steps: ''
+                },
+                updatedCards: ['chief', 'diagnosis']
+            },
+            {
+                time: 30,
+                speaker: 'doctor',
+                dialogue: 'Based on your symptoms, this looks like tension-type headache aggravated by screen time. I am going to prescribe some medicines. Take Paracetamol 500mg three times a day for 3 days.',
+                extraction: {
+                    chief_complaint: 'Headache for 3 days, worse in the morning. Associated with mild nausea and photosensitivity. Neck stiffness present. No vomiting. No history of trauma. Family history of migraine (mother). Prolonged screen exposure.',
+                    diagnosis: 'Tension-type headache, possibly migraine without aura. Rule out cervicogenic headache.',
+                    medicine: 'Tab. Paracetamol 500mg - 1 tablet TID x 3 days',
+                    advice: '', next_steps: ''
+                },
+                updatedCards: ['medicine']
+            },
+            {
+                time: 35,
+                speaker: 'doctor',
+                dialogue: 'Also take Domperidone 10mg if you feel nauseous. And a muscle relaxant - Thiocolchicoside 4mg twice a day for the neck stiffness.',
+                extraction: {
+                    chief_complaint: 'Headache for 3 days, worse in the morning. Associated with mild nausea and photosensitivity. Neck stiffness present. No vomiting. No history of trauma. Family history of migraine (mother). Prolonged screen exposure.',
+                    diagnosis: 'Tension-type headache, possibly migraine without aura. Rule out cervicogenic headache.',
+                    medicine: 'Tab. Paracetamol 500mg - 1 tablet TID x 3 days\nTab. Domperidone 10mg - 1 tablet SOS for nausea\nTab. Thiocolchicoside 4mg - 1 tablet BID x 5 days',
+                    advice: '', next_steps: ''
+                },
+                updatedCards: ['medicine']
+            },
+            {
+                time: 40,
+                speaker: 'doctor',
+                dialogue: 'Some important things - take proper rest, reduce screen time, follow the 20-20-20 rule. Stay well hydrated, at least 3 litres of water daily.',
+                extraction: {
+                    chief_complaint: 'Headache for 3 days, worse in the morning. Associated with mild nausea and photosensitivity. Neck stiffness present. No vomiting. No history of trauma. Family history of migraine (mother). Prolonged screen exposure.',
+                    diagnosis: 'Tension-type headache, possibly migraine without aura. Rule out cervicogenic headache.',
+                    medicine: 'Tab. Paracetamol 500mg - 1 tablet TID x 3 days\nTab. Domperidone 10mg - 1 tablet SOS for nausea\nTab. Thiocolchicoside 4mg - 1 tablet BID x 5 days',
+                    advice: 'Adequate rest and hydration (3L water/day). Reduce prolonged screen time - follow 20-20-20 rule. Maintain regular sleep schedule. Neck stretching exercises.',
+                    next_steps: ''
+                },
+                updatedCards: ['advice']
+            },
+            {
+                time: 45,
+                speaker: 'doctor',
+                dialogue: 'Come back in one week if symptoms persist. If the headache gets significantly worse or you develop any vision changes, come to the ER immediately.',
+                extraction: {
+                    chief_complaint: 'Headache for 3 days, worse in the morning. Associated with mild nausea and photosensitivity. Neck stiffness present. No vomiting. No history of trauma. Family history of migraine (mother). Prolonged screen exposure.',
+                    diagnosis: 'Tension-type headache, possibly migraine without aura. Rule out cervicogenic headache.',
+                    medicine: 'Tab. Paracetamol 500mg - 1 tablet TID x 3 days\nTab. Domperidone 10mg - 1 tablet SOS for nausea\nTab. Thiocolchicoside 4mg - 1 tablet BID x 5 days',
+                    advice: 'Adequate rest and hydration (3L water/day). Reduce prolonged screen time - follow 20-20-20 rule. Maintain regular sleep schedule. Neck stretching exercises.',
+                    next_steps: 'Follow-up in 1 week if symptoms persist. ER visit if severe worsening or vision changes. MRI brain if no improvement after 1 week. Consider neurology referral if recurrent.'
+                },
+                updatedCards: ['nextsteps']
+            },
+            {
+                time: 50,
+                speaker: 'patient',
+                dialogue: 'Thank you doctor. I will follow all of this. See you next week if needed.',
+                extraction: null
+            }
+        ];
+
+        // Store final extraction for post-session
+        let finalExtraction = {};
+
+        function toggleSimulation() {
+            if (simRunning) {
+                stopSimulation();
+            } else {
+                startSimulation();
+            }
+        }
+
+        function startSimulation() {
+            resetAll();
+            simRunning = true;
+            simBtn.textContent = 'Stop Simulation';
+            simBtn.classList.add('sim-stop');
+
+            // Phase 1: Badge pulses for 1.5s, then panel opens
+            simTimeouts.push(setTimeout(() => {
+                // Open panel
+                panel.style.display = 'flex';
+
+                // Pre-fill patient info after 0.5s
+                simTimeouts.push(setTimeout(() => {
+                    nameInput.value = 'Rahul Sharma';
+                    ageInput.value = '45';
+                    genderInput.value = 'Male';
+                }, 500));
+
+                // Start connecting after 1.5s
+                simTimeouts.push(setTimeout(() => {
+                    setStatus('Connecting...', 'connecting');
+                    nameInput.disabled = true;
+                    ageInput.disabled = true;
+                    genderInput.disabled = true;
+                    startBtn.disabled = true;
+                }, 1500));
+
+                // Start recording after 3s
+                simTimeouts.push(setTimeout(() => {
+                    sessionPhase = 'recording';
+                    setStatus('Recording', 'recording');
+                    stopBtn.disabled = false;
+                    badge.classList.remove('drt-badge-detected');
+                    badge.classList.add('drt-badge-active');
+                    simElapsed = 0;
+
+                    // Start timer
+                    simInterval = setInterval(() => {
+                        simElapsed++;
+                        const mins = Math.floor(simElapsed / 60);
+                        const secs = simElapsed % 60;
+                        simTimer.textContent = `${mins}:${secs.toString().padStart(2, '0')} elapsed`;
+                        meetTime.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+                    }, 1000);
+
+                    // Schedule conversation
+                    CONVERSATION.forEach((step) => {
+                        simTimeouts.push(setTimeout(() => {
+                            showDialogue(step.speaker, step.dialogue);
+                        }, step.time * 1000));
+
+                        if (step.extraction) {
+                            simTimeouts.push(setTimeout(() => {
+                                finalExtraction = step.extraction;
+                                updateCards(step.extraction, step.updatedCards);
+                            }, (step.time + 3) * 1000));
+                        }
+                    });
+
+                    // End recording -> transition to post-session
+                    const lastTime = CONVERSATION[CONVERSATION.length - 1].time;
+                    simTimeouts.push(setTimeout(() => {
+                        hideDialogue();
+                        doctorRing.classList.remove('active');
+                        patientRing.classList.remove('active');
+                        clearInterval(simInterval);
+
+                        // Transition to post-session mode
+                        transitionToPostSession();
+                    }, (lastTime + 5) * 1000));
+
+                }, 3000));
+            }, 1500));
+        }
+
+        function transitionToPostSession() {
+            sessionPhase = 'post';
+            setStatus('Session Complete', '');
+            stopBtn.disabled = true;
+            badge.classList.remove('drt-badge-active');
+            badge.classList.add('drt-badge-detected');
+
+            // Hide session actions
+            sessionActions.style.display = 'none';
+
+            // Replace card content with textareas
+            const fieldMap = {
+                chief_complaint: 'drt-chief-complaint',
+                diagnosis: 'drt-diagnosis',
+                medicine: 'drt-medicine',
+                advice: 'drt-advice',
+                next_steps: 'drt-next-steps'
+            };
+
+            for (const [key, id] of Object.entries(fieldMap)) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                const text = el.classList.contains('drt-empty') ? '' : el.textContent;
+                const textarea = document.createElement('textarea');
+                textarea.id = 'drt-edit-' + key;
+                textarea.className = 'drt-card-textarea';
+                textarea.value = text;
+                textarea.placeholder = 'No data captured';
+                textarea.rows = 3;
+                el.parentNode.replaceChild(textarea, el);
+            }
+
+            // Add export bar
+            const results = document.getElementById('drt-results');
+            const exportBar = document.createElement('div');
+            exportBar.id = 'drt-export-bar';
+            exportBar.className = 'drt-export-bar';
+            exportBar.innerHTML = `
+                <div class="drt-section-title">Export</div>
+                <div class="drt-export-actions">
+                    <button class="drt-btn-export drt-btn-export-primary" id="drt-export-pdf">Export PDF</button>
+                    <button class="drt-btn-export" id="drt-export-email">Open in Gmail</button>
+                    <button class="drt-btn-export" id="drt-export-clipboard">Copy to Clipboard</button>
+                    <button class="drt-btn-export" id="drt-export-txt">Download TXT</button>
+                </div>
+                <button class="drt-btn-new-session" id="drt-new-session">+ New Session</button>
+            `;
+            results.parentNode.insertBefore(exportBar, results.nextSibling);
+
+            // Wire export buttons using inline helpers
+            const currentPatient = { name: 'Rahul Sharma', age: 45, gender: 'Male' };
+
+            document.getElementById('drt-export-pdf').addEventListener('click', () => {
+                previewExportPDF(currentPatient, {
+                    doctorName: 'Dr. Priya Mehta',
+                    clinicName: 'City Health Clinic'
+                });
+            });
+            document.getElementById('drt-export-email').addEventListener('click', () => {
+                const text = previewFormatText(currentPatient);
+                const subject = encodeURIComponent('Consultation Notes - ' + currentPatient.name + ' - ' + previewDateStr());
+                const body = encodeURIComponent(text);
+                window.open('https://mail.google.com/mail/?view=cm&su=' + subject + '&body=' + body, '_blank');
+                copyToClipboard(text);
+            });
+            document.getElementById('drt-export-clipboard').addEventListener('click', () => {
+                const text = previewFormatText(currentPatient);
+                copyToClipboard(text);
+            });
+            document.getElementById('drt-export-txt').addEventListener('click', () => {
+                previewExportTXT(currentPatient);
+                showToast('TXT downloaded!');
+            });
+            document.getElementById('drt-new-session').addEventListener('click', () => {
+                transitionToPreSession();
+            });
+
+            simRunning = false;
+            simBtn.textContent = 'Play Full Demo';
+            simBtn.classList.remove('sim-stop');
+
+            // Scroll to show export bar
+            const body = document.getElementById('drt-body');
+            body.scrollTop = body.scrollHeight;
+        }
+
+        function transitionToPreSession() {
+            sessionPhase = 'pre';
+
+            const fieldMap = {
+                chief_complaint: 'drt-chief-complaint',
+                diagnosis: 'drt-diagnosis',
+                medicine: 'drt-medicine',
+                advice: 'drt-advice',
+                next_steps: 'drt-next-steps'
+            };
+
+            for (const [key, id] of Object.entries(fieldMap)) {
+                const textarea = document.getElementById('drt-edit-' + key);
+                if (!textarea) continue;
+                const div = document.createElement('div');
+                div.id = id;
+                div.className = 'drt-card-content drt-empty';
+                div.textContent = 'Waiting for session...';
+                textarea.parentNode.replaceChild(div, textarea);
+            }
+
+            const exportBar = document.getElementById('drt-export-bar');
+            if (exportBar) exportBar.remove();
+
+            sessionActions.style.display = '';
+            setStatus('Ready', '');
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            nameInput.disabled = false;
+            ageInput.disabled = false;
+            genderInput.disabled = false;
+            nameInput.value = '';
+            ageInput.value = '';
+            genderInput.value = '';
+            simTimer.textContent = '';
+            meetTime.textContent = '0:00';
+        }
+
+        function stopSimulation() {
+            simTimeouts.forEach(t => clearTimeout(t));
+            simTimeouts = [];
+            if (simInterval) clearInterval(simInterval);
+            simRunning = false;
+            simBtn.textContent = 'Play Full Demo';
+            simBtn.classList.remove('sim-stop');
+            hideDialogue();
+            doctorRing.classList.remove('active');
+            patientRing.classList.remove('active');
+        }
+
+        function resetAll() {
+            stopSimulation();
+
+            // Reset to pre-session if in post
+            if (sessionPhase === 'post') {
+                transitionToPreSession();
+            }
+
+            setStatus('Ready', '');
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            nameInput.disabled = false;
+            ageInput.disabled = false;
+            genderInput.disabled = false;
+            nameInput.value = '';
+            ageInput.value = '';
+            genderInput.value = '';
+            simTimer.textContent = '';
+            meetTime.textContent = '0:00';
+            sessionPhase = 'pre';
+            panel.style.display = 'none';
+            badge.classList.remove('drt-badge-active');
+            badge.classList.add('drt-badge-detected');
+
+            document.querySelectorAll('.drt-card-content').forEach(el => {
+                el.textContent = 'Waiting for session...';
+                el.className = 'drt-card-content drt-empty';
+            });
+            document.querySelectorAll('.drt-card').forEach(el => {
+                el.classList.remove('drt-card-updating');
+            });
+        }
+
+        function setStatus(text, state) {
+            statusEl.textContent = text;
+            statusEl.className = 'drt-status';
+            if (state) statusEl.classList.add('drt-status-' + state);
+        }
+
+        function showDialogue(speaker, text) {
+            doctorRing.classList.toggle('active', speaker === 'doctor');
+            patientRing.classList.toggle('active', speaker === 'patient');
+            const label = speaker === 'doctor' ? 'Dr. Mehta' : 'Rahul';
+            transcriptBar.innerHTML = `<span class="speaker">${label}:</span> "${text}"`;
+            transcriptBar.classList.add('visible');
+        }
+
+        function hideDialogue() {
+            transcriptBar.classList.remove('visible');
+        }
+
+        function updateCards(extraction, updatedCardIds) {
+            const mapping = {
+                chief_complaint: { el: 'drt-chief-complaint', card: 'card-chief' },
+                diagnosis:       { el: 'drt-diagnosis',        card: 'card-diagnosis' },
+                medicine:        { el: 'drt-medicine',         card: 'card-medicine' },
+                advice:          { el: 'drt-advice',           card: 'card-advice' },
+                next_steps:      { el: 'drt-next-steps',       card: 'card-nextsteps' }
+            };
+
+            for (const [key, val] of Object.entries(mapping)) {
+                const contentEl = document.getElementById(val.el);
+                const cardEl = document.getElementById(val.card);
+                const text = extraction[key];
+
+                if (text && text.trim() && contentEl) {
+                    contentEl.textContent = text;
+                    contentEl.classList.remove('drt-empty');
+
+                    if (updatedCardIds && updatedCardIds.some(id => val.card.includes(id))) {
+                        cardEl.classList.add('drt-card-updating');
+                        setTimeout(() => cardEl.classList.remove('drt-card-updating'), 1500);
+                    }
+                }
+            }
+
+            const body = document.getElementById('drt-body');
+            if (updatedCardIds) {
+                const lastCard = updatedCardIds[updatedCardIds.length - 1];
+                const targetCard = document.getElementById('card-' + lastCard);
+                if (targetCard) {
+                    targetCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        }
+
+        function copyToClipboard(text) {
+            // navigator.clipboard requires secure context (HTTPS/localhost)
+            // Use execCommand fallback for file:// protocol
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        showToast('Copied to clipboard!');
+                    }).catch(() => {
+                        execCopyFallback(text);
+                    });
+                } else {
+                    execCopyFallback(text);
+                }
+            } catch (e) {
+                execCopyFallback(text);
+            }
+        }
+
+        function execCopyFallback(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            ta.style.top = '-9999px';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try {
+                document.execCommand('copy');
+                showToast('Copied to clipboard!');
+            } catch (e) {
+                showToast('Copy failed - select text manually');
+            }
+            document.body.removeChild(ta);
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('drt-toast');
+            toast.textContent = message;
+            toast.classList.add('drt-toast-visible');
+            setTimeout(() => {
+                toast.classList.remove('drt-toast-visible');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

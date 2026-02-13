@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <div class="popup-header">
+      <span class="popup-logo">drT</span>
+      <span class="popup-title">drTranscribe</span>
+    </div>
+
+    <div class="popup-section">
+      <label class="popup-label" for="server-url">Server URL</label>
+      <div class="popup-input-row">
+        <input type="text" id="server-url" class="popup-input" placeholder="http://localhost:8000" />
+        <button id="save-btn" class="popup-btn">Save</button>
+      </div>
+    </div>
+
+    <div class="popup-section">
+      <label class="popup-label" for="doctor-name">Doctor Name</label>
+      <input type="text" id="doctor-name" class="popup-input popup-input-full" placeholder="Dr. Name" />
+    </div>
+
+    <div class="popup-section">
+      <label class="popup-label" for="clinic-name">Clinic Name (optional)</label>
+      <input type="text" id="clinic-name" class="popup-input popup-input-full" placeholder="Clinic / Hospital" />
+    </div>
+
+    <div class="popup-section">
+      <label class="popup-label">Server Status</label>
+      <div class="popup-status" id="status">
+        <span class="popup-status-dot" id="status-dot"></span>
+        <span id="status-text">Checking...</span>
+      </div>
+    </div>
+
+    <div class="popup-footer">
+      <span id="session-status"></span>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
