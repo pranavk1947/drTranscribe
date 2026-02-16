@@ -106,12 +106,24 @@
             border-radius: 12px; padding: 24px; margin: 20px 0 28px;
             overflow-x: auto;
         }
-        .diagram-container .mermaid {
-            display: flex; justify-content: center;
+        .diagram-target {
+            display: flex; justify-content: center; align-items: center;
+            min-height: 80px;
         }
         .diagram-label {
             font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
             color: var(--text-muted); margin-bottom: 16px; text-align: center;
+        }
+        .diagram-error {
+            color: var(--accent-red);
+            background: rgba(248, 81, 73, 0.08);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 13px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            text-align: center;
+            white-space: pre-wrap;
         }
 
         /* ─── Cards ───────────────────────────────────────── */
@@ -337,68 +349,7 @@
 
     <div class="diagram-container">
         <div class="diagram-label">End-to-End System Architecture</div>
-        <div class="mermaid">
-graph TB
-    subgraph CLIENT["CLIENT LAYER (Chrome Extension)"]
-        direction TB
-        BADGE["Floating Badge<br/><i>Non-intrusive activation</i>"]
-        PANEL["Overlay Panel<br/><i>Patient form + 5 cards</i>"]
-        CAPTURE["Audio Capture<br/><i>AudioWorklet + WAV Encoder</i>"]
-        EXPORT["Export Module<br/><i>PDF / Gmail / Clipboard / TXT</i>"]
-        BG["Background Service Worker<br/><i>tabCapture + WebSocket relay</i>"]
-        OFFSCREEN["Offscreen Document<br/><i>Tab audio + mic mixing</i>"]
-
-        BADGE -->|click| PANEL
-        PANEL -->|start session| BG
-        BG -->|streamId| OFFSCREEN
-        OFFSCREEN -->|audio chunks| BG
-        PANEL -->|post-session| EXPORT
-    end
-
-    subgraph TRANSPORT["TRANSPORT LAYER"]
-        WS["WebSocket /ws<br/><i>Persistent bidirectional</i>"]
-    end
-
-    subgraph SERVER["SERVER LAYER (FastAPI + Uvicorn)"]
-        direction TB
-        API["REST API<br/><i>/health, /api/config</i>"]
-        WSH["WebSocket Handler<br/><i>Message routing + pipeline</i>"]
-        SM["Session Manager<br/><i>In-memory session store</i>"]
-
-        subgraph AI["AI PIPELINE"]
-            direction LR
-            TS["Transcription Service<br/><i>Speech-to-Text</i>"]
-            ES["Extraction Service<br/><i>NLP + Structured Output</i>"]
-            TS -->|full transcript| ES
-        end
-
-        WSH --> SM
-        WSH --> AI
-    end
-
-    subgraph PROVIDERS["EXTERNAL AI PROVIDERS"]
-        direction LR
-        GROQ["Groq Whisper<br/><i>whisper-large-v3</i>"]
-        OAI_W["OpenAI Whisper<br/><i>whisper-1</i>"]
-        AZURE_W["Azure Whisper<br/><i>deployment-based</i>"]
-        GPT["Azure GPT<br/><i>gpt-4.1-mini</i>"]
-        OAI_G["OpenAI GPT-4<br/><i>gpt-4-turbo</i>"]
-    end
-
-    BG <-->|JSON messages| WS
-    WS <--> WSH
-    TS -.->|config-selected| GROQ
-    TS -.->|fallback| OAI_W
-    TS -.->|fallback| AZURE_W
-    ES -.->|config-selected| GPT
-    ES -.->|fallback| OAI_G
-
-    style CLIENT fill:#1a1f2e,stroke:#30363d,color:#e6edf3
-    style TRANSPORT fill:#1c2333,stroke:#58a6ff,color:#e6edf3
-    style SERVER fill:#1a1f2e,stroke:#30363d,color:#e6edf3
-    style AI fill:#1c2333,stroke:#bc8cff,color:#e6edf3
-    style PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
-        </div>
+        <div id="diagram-1" class="diagram-target"></div>
     </div>
 
     <h3><span class="decorator">#</span> Technology Stack</h3>
@@ -487,47 +438,7 @@ graph TB
 
     <div class="diagram-container">
         <div class="diagram-label">Audio Chunk Processing Pipeline (per 5-second window)</div>
-        <div class="mermaid">
-sequenceDiagram
-    participant Tab as Tab Audio
-    participant Mic as Microphone
-    participant AW as AudioWorklet<br/>(dedicated thread)
-    participant WE as WAV Encoder
-    participant BG as Background SW
-    participant WS as WebSocket
-    participant TH as WS Handler
-    participant STT as Transcription<br/>Service
-    participant LLM as Extraction<br/>Service
-    participant SM as Session<br/>Manager
-    participant UI as Content Script
-
-    Tab->>AW: PCM samples (128/frame)
-    Mic->>AW: PCM samples (128/frame)
-    Note over AW: Buffer 80,000 samples<br/>(5s at 16kHz mono)
-    AW->>WE: Float32Array (transferable)
-    WE->>BG: WAV Blob
-    BG->>BG: Base64 encode
-    BG->>WS: audio_chunk {audio_data}
-    WS->>TH: Route message
-
-    rect rgba(188, 140, 255, 0.08)
-        Note over TH,LLM: AI Processing (~3-6s)
-        TH->>STT: transcribe(audio_bytes)
-        STT->>STT: Format conversion<br/>(WebM→Opus/WAV)
-        STT-->>TH: transcript text
-        TH->>SM: append_transcript_chunk()
-        TH->>SM: get_full_transcript()
-        SM-->>TH: joined transcript
-        TH->>LLM: extract(transcript, patient, prev)
-        LLM-->>TH: ExtractionResult JSON
-        TH->>SM: update_extraction(merge)
-    end
-
-    TH->>WS: extraction_update
-    WS->>BG: Forward to tab
-    BG->>UI: chrome.tabs.sendMessage
-    UI->>UI: Update card DOM
-        </div>
+        <div id="diagram-2" class="diagram-target"></div>
     </div>
 
     <h3><span class="decorator">#</span> Latency Breakdown</h3>
@@ -561,33 +472,7 @@ sequenceDiagram
 
     <div class="diagram-container">
         <div class="diagram-label">Session Lifecycle &mdash; Message Exchange</div>
-        <div class="mermaid">
-sequenceDiagram
-    participant C as Client
-    participant S as Server
-
-    C->>S: Connect ws://host/ws
-    Note over C,S: Connection established
-
-    C->>S: {"type": "start_session",<br/>"patient": {"name","age","gender"}}
-    S->>S: Create ConsultationSession
-    Note over S: Session active
-
-    loop Every 5 seconds
-        C->>S: {"type": "audio_chunk",<br/>"audio_data": "base64..."}
-        S->>S: Transcribe → Extract → Merge
-        S->>C: {"type": "extraction_update",<br/>"extraction": {5 fields}}
-    end
-
-    alt Error occurs
-        S->>C: {"type": "error",<br/>"message": "..."}
-        Note over C,S: Session continues
-    end
-
-    C->>S: {"type": "stop_session"}
-    S->>S: Cleanup session
-    Note over C,S: Connection closed
-        </div>
+        <div id="diagram-3" class="diagram-target"></div>
     </div>
 
     <h3><span class="decorator">#</span> Message Schema</h3>
@@ -614,39 +499,7 @@ sequenceDiagram
 
     <div class="diagram-container">
         <div class="diagram-label">Provider Abstraction &mdash; Strategy Pattern</div>
-        <div class="mermaid">
-graph LR
-    subgraph ABSTRACTION["Service Layer"]
-        TS["TranscriptionService"]
-        ES["ExtractionService"]
-    end
-
-    subgraph STT_PROVIDERS["STT Providers"]
-        G["GroqWhisper<br/><i>whisper-large-v3</i><br/>FREE / 5x faster"]
-        O["OpenAIWhisper<br/><i>whisper-1</i><br/>$0.006/min"]
-        A["AzureWhisper<br/><i>deployment</i><br/>Enterprise SLA"]
-        M1["MockWhisper<br/><i>6 scripted responses</i><br/>Testing only"]
-    end
-
-    subgraph LLM_PROVIDERS["LLM Providers"]
-        AG["AzureGPT<br/><i>gpt-4.1-mini</i><br/>142-line system prompt"]
-        OG["OpenAIGPT<br/><i>gpt-4-turbo</i><br/>Generic prompt"]
-        M2["MockGPT<br/><i>keyword-based</i><br/>Testing only"]
-    end
-
-    TS -->|config: groq| G
-    TS -.->|config: openai| O
-    TS -.->|config: azure| A
-    TS -.->|config: mock| M1
-
-    ES -->|config: azure| AG
-    ES -.->|config: openai| OG
-    ES -.->|config: mock| M2
-
-    style ABSTRACTION fill:#1c2333,stroke:#bc8cff,color:#e6edf3
-    style STT_PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
-    style LLM_PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
-        </div>
+        <div id="diagram-4" class="diagram-target"></div>
     </div>
 
     <h3><span class="decorator">#</span> Extraction Prompt Engineering</h3>
@@ -675,80 +528,13 @@ graph LR
 
     <div class="diagram-container">
         <div class="diagram-label">Extension Component Communication</div>
-        <div class="mermaid">
-graph TB
-    subgraph MEETING["Meeting Tab (meet.google.com / zoom.us)"]
-        CS["content.js<br/><i>Badge + Panel UI</i>"]
-        CSS["content.css<br/><i>Injected styles</i>"]
-        EXP["export.js<br/><i>PDF/Email/TXT</i>"]
-        JSPDF["jspdf.umd.min.js<br/><i>366KB bundled</i>"]
-    end
-
-    subgraph SW["Service Worker Context"]
-        BG2["background.js<br/><i>Orchestrator</i>"]
-    end
-
-    subgraph OSD["Offscreen Document"]
-        OS["offscreen.js<br/><i>Audio capture</i>"]
-        AWP["audio-worklet-processor.js<br/><i>Real-time audio thread</i>"]
-        WAV["wav-encoder.js<br/><i>PCM → WAV</i>"]
-    end
-
-    subgraph POPUP["Popup"]
-        PH["popup.html/js/css<br/><i>Settings: URL, Doctor, Clinic</i>"]
-    end
-
-    CS <-->|chrome.runtime<br/>messages| BG2
-    BG2 <-->|chrome.runtime<br/>messages| OS
-    BG2 -->|tabCapture<br/>streamId| OS
-    OS --> AWP
-    AWP --> WAV
-    PH -->|chrome.storage.local| BG2
-    BG2 <-->|WebSocket| BACKEND["Backend Server"]
-
-    style MEETING fill:#1a1f2e,stroke:#58a6ff,color:#e6edf3
-    style SW fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
-    style OSD fill:#1a1f2e,stroke:#d29922,color:#e6edf3
-    style POPUP fill:#1a1f2e,stroke:#bc8cff,color:#e6edf3
-        </div>
+        <div id="diagram-5" class="diagram-target"></div>
     </div>
 
     <h3><span class="decorator">#</span> Session State Machine</h3>
     <div class="diagram-container">
         <div class="diagram-label">Three-Phase UI State Machine</div>
-        <div class="mermaid">
-stateDiagram-v2
-    [*] --> BadgeOnly: Page load on meeting URL
-
-    BadgeOnly --> PreSession: Badge clicked
-    PreSession --> BadgeOnly: Panel closed
-
-    PreSession --> Recording: Start Session<br/>(validates patient form)
-    Recording --> PostSession: session-ended message
-
-    PostSession --> PreSession: + New Session clicked
-
-    state BadgeOnly {
-        [*] --> Detected: Blue glow badge
-    }
-
-    state PreSession {
-        [*] --> FormReady: Patient form enabled
-        FormReady --> Connecting: Start clicked
-        Connecting --> FormReady: Connection failed
-    }
-
-    state Recording {
-        [*] --> Active: Green pulse badge
-        Active --> Active: extraction_update
-    }
-
-    state PostSession {
-        [*] --> Editable: Cards → Textareas
-        Editable --> Exporting: Export button clicked
-        Exporting --> Editable: Export complete
-    }
-        </div>
+        <div id="diagram-6" class="diagram-target"></div>
     </div>
 </div>
 
@@ -796,33 +582,7 @@ stateDiagram-v2
 
     <div class="diagram-container">
         <div class="diagram-label">Error Propagation &amp; Recovery Flow</div>
-        <div class="mermaid">
-graph TD
-    CHUNK["Audio Chunk Received"] --> DECODE{"Base64<br/>Decode"}
-    DECODE -->|Success| TRANSCRIBE{"Transcribe<br/>API Call"}
-    DECODE -->|Failure| LOG_ERR1["Log error<br/>Skip chunk"]
-
-    TRANSCRIBE -->|Success| CHECK_LEN{"Transcript<br/>>50 chars?"}
-    TRANSCRIBE -->|API Error| SEND_ERR["Send error msg<br/>to client"]
-    SEND_ERR --> CONTINUE["Continue session<br/>Wait for next chunk"]
-
-    CHECK_LEN -->|Yes| EXTRACT{"Extract<br/>API Call"}
-    CHECK_LEN -->|No| SKIP["Skip extraction<br/>(too short)"]
-    SKIP --> CONTINUE
-
-    EXTRACT -->|Success| MERGE["Merge into<br/>session state"]
-    EXTRACT -->|API Error| SEND_ERR2["Send error msg<br/>Transcript still saved"]
-    SEND_ERR2 --> CONTINUE
-
-    MERGE --> SEND_UPDATE["Send extraction_update<br/>to client"]
-    SEND_UPDATE --> CONTINUE
-
-    LOG_ERR1 --> CONTINUE
-
-    style CONTINUE fill:#1c2333,stroke:#3fb950,color:#e6edf3
-    style SEND_ERR fill:#1c2333,stroke:#f85149,color:#e6edf3
-    style SEND_ERR2 fill:#1c2333,stroke:#f85149,color:#e6edf3
-        </div>
+        <div id="diagram-7" class="diagram-target"></div>
     </div>
 </div>
 
@@ -845,47 +605,7 @@ graph TD
     <h3><span class="decorator">#</span> Horizontal Scaling Path</h3>
     <div class="diagram-container">
         <div class="diagram-label">Scaled Architecture (Future)</div>
-        <div class="mermaid">
-graph TB
-    subgraph CLIENTS["Clients (N doctors)"]
-        C1["Doctor 1<br/>Chrome Ext"]
-        C2["Doctor 2<br/>Chrome Ext"]
-        CN["Doctor N<br/>Chrome Ext"]
-    end
-
-    LB["Load Balancer<br/><i>Sticky sessions (WebSocket)</i>"]
-
-    subgraph WORKERS["Application Workers"]
-        W1["Worker 1<br/><i>FastAPI + Uvicorn</i>"]
-        W2["Worker 2<br/><i>FastAPI + Uvicorn</i>"]
-        WN["Worker N<br/><i>FastAPI + Uvicorn</i>"]
-    end
-
-    subgraph SHARED["Shared Infrastructure"]
-        REDIS["Redis<br/><i>Session store +<br/>pub/sub</i>"]
-        QUEUE["Task Queue<br/><i>Celery / Bull</i>"]
-        DB["PostgreSQL<br/><i>Session persistence +<br/>audit log</i>"]
-        S3["Object Storage<br/><i>Audio archive</i>"]
-    end
-
-    subgraph AI_POOL["AI Provider Pool"]
-        AI1["Groq API<br/><i>Rate limit: 100 RPM</i>"]
-        AI2["Azure OpenAI<br/><i>Provisioned throughput</i>"]
-    end
-
-    C1 & C2 & CN --> LB
-    LB --> W1 & W2 & WN
-    W1 & W2 & WN --> REDIS
-    W1 & W2 & WN --> QUEUE
-    QUEUE --> AI1 & AI2
-    W1 & W2 & WN --> DB
-    W1 & W2 & WN --> S3
-
-    style CLIENTS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
-    style WORKERS fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
-    style SHARED fill:#1a1f2e,stroke:#58a6ff,color:#e6edf3
-    style AI_POOL fill:#1a1f2e,stroke:#bc8cff,color:#e6edf3
-        </div>
+        <div id="diagram-8" class="diagram-target"></div>
     </div>
 
     <h3><span class="decorator">#</span> Scaling Levers</h3>
@@ -910,34 +630,7 @@ graph TB
 
     <div class="diagram-container">
         <div class="diagram-label">Async Concurrency &mdash; Per-Session Sequential, Cross-Session Parallel</div>
-        <div class="mermaid">
-graph TB
-    subgraph UVICORN["Uvicorn ASGI Server (Single Process, Event Loop)"]
-        EL["asyncio Event Loop"]
-
-        subgraph S1["Session A (WebSocket 1)"]
-            direction LR
-            A1["chunk 1"] --> A2["chunk 2"] --> A3["chunk 3"]
-        end
-
-        subgraph S2["Session B (WebSocket 2)"]
-            direction LR
-            B1["chunk 1"] --> B2["chunk 2"] --> B3["chunk 3"]
-        end
-
-        subgraph S3["Session C (WebSocket 3)"]
-            direction LR
-            C1["chunk 1"] --> C2["chunk 2"]
-        end
-
-        EL --> S1 & S2 & S3
-    end
-
-    NOTE["Chunks within a session: SEQUENTIAL<br/>(preserves transcript ordering)<br/><br/>Sessions across connections: PARALLEL<br/>(async I/O, no blocking)"]
-
-    style UVICORN fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
-    style NOTE fill:#1c2333,stroke:#58a6ff,color:#e6edf3
-        </div>
+        <div id="diagram-9" class="diagram-target"></div>
     </div>
 
     <div class="callout callout-info">
@@ -1158,10 +851,11 @@ graph TB
 </div><!-- /container -->
 
 <!-- Mermaid.js for diagrams -->
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 <script>
     mermaid.initialize({
-        startOnLoad: true,
+        startOnLoad: false,
+        securityLevel: 'loose',
         theme: 'dark',
         themeVariables: {
             darkMode: true,
@@ -1182,9 +876,346 @@ graph TB
             labelBoxBkgColor: '#1c2333',
             labelTextColor: '#e6edf3'
         },
-        flowchart: { curve: 'basis', padding: 16 },
+        flowchart: { curve: 'basis', padding: 16, htmlLabels: true },
         sequence: { actorMargin: 40, messageMargin: 30 }
     });
+
+    const diagrams = {
+        'diagram-1': `graph TB
+    subgraph CLIENT["CLIENT LAYER (Chrome Extension)"]
+        direction TB
+        BADGE["Floating Badge<br/>Non-intrusive activation"]
+        PANEL["Overlay Panel<br/>Patient form + 5 cards"]
+        CAPTURE["Audio Capture<br/>AudioWorklet + WAV Encoder"]
+        EXPORT["Export Module<br/>PDF / Gmail / Clipboard / TXT"]
+        BG["Background Service Worker<br/>tabCapture + WebSocket relay"]
+        OFFSCREEN["Offscreen Document<br/>Tab audio + mic mixing"]
+
+        BADGE -->|click| PANEL
+        PANEL -->|start session| BG
+        BG -->|streamId| OFFSCREEN
+        OFFSCREEN -->|audio chunks| BG
+        PANEL -->|post-session| EXPORT
+    end
+
+    subgraph TRANSPORT["TRANSPORT LAYER"]
+        WS["WebSocket /ws<br/>Persistent bidirectional"]
+    end
+
+    subgraph SERVER["SERVER LAYER (FastAPI + Uvicorn)"]
+        direction TB
+        API["REST API<br/>/health, /api/config"]
+        WSH["WebSocket Handler<br/>Message routing + pipeline"]
+        SM["Session Manager<br/>In-memory session store"]
+
+        subgraph AI["AI PIPELINE"]
+            direction LR
+            TS["Transcription Service<br/>Speech-to-Text"]
+            ES["Extraction Service<br/>NLP + Structured Output"]
+            TS -->|full transcript| ES
+        end
+
+        WSH --> SM
+        WSH --> AI
+    end
+
+    subgraph PROVIDERS["EXTERNAL AI PROVIDERS"]
+        direction LR
+        GROQ["Groq Whisper<br/>whisper-large-v3"]
+        OAI_W["OpenAI Whisper<br/>whisper-1"]
+        AZURE_W["Azure Whisper<br/>deployment-based"]
+        GPT["Azure GPT<br/>gpt-4.1-mini"]
+        OAI_G["OpenAI GPT-4<br/>gpt-4-turbo"]
+    end
+
+    BG <-->|JSON messages| WS
+    WS <--> WSH
+    TS -.->|config-selected| GROQ
+    TS -.->|fallback| OAI_W
+    TS -.->|fallback| AZURE_W
+    ES -.->|config-selected| GPT
+    ES -.->|fallback| OAI_G
+
+    style CLIENT fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style TRANSPORT fill:#1c2333,stroke:#58a6ff,color:#e6edf3
+    style SERVER fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style AI fill:#1c2333,stroke:#bc8cff,color:#e6edf3
+    style PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3`,
+
+        'diagram-2': `sequenceDiagram
+    participant Tab as Tab Audio
+    participant Mic as Microphone
+    participant AW as AudioWorklet<br/>(dedicated thread)
+    participant WE as WAV Encoder
+    participant BG as Background SW
+    participant WS as WebSocket
+    participant TH as WS Handler
+    participant STT as Transcription<br/>Service
+    participant LLM as Extraction<br/>Service
+    participant SM as Session<br/>Manager
+    participant UI as Content Script
+
+    Tab->>AW: PCM samples (128/frame)
+    Mic->>AW: PCM samples (128/frame)
+    Note over AW: Buffer 80,000 samples<br/>(5s at 16kHz mono)
+    AW->>WE: Float32Array (transferable)
+    WE->>BG: WAV Blob
+    BG->>BG: Base64 encode
+    BG->>WS: audio_chunk {audio_data}
+    WS->>TH: Route message
+
+    rect rgba(188, 140, 255, 0.08)
+        Note over TH,LLM: AI Processing (~3-6s)
+        TH->>STT: transcribe(audio_bytes)
+        STT->>STT: Format conversion<br/>(WebM\u2192Opus/WAV)
+        STT-->>TH: transcript text
+        TH->>SM: append_transcript_chunk()
+        TH->>SM: get_full_transcript()
+        SM-->>TH: joined transcript
+        TH->>LLM: extract(transcript, patient, prev)
+        LLM-->>TH: ExtractionResult JSON
+        TH->>SM: update_extraction(merge)
+    end
+
+    TH->>WS: extraction_update
+    WS->>BG: Forward to tab
+    BG->>UI: chrome.tabs.sendMessage
+    UI->>UI: Update card DOM`,
+
+        'diagram-3': `sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: Connect ws://host/ws
+    Note over C,S: Connection established
+
+    C->>S: {"type": "start_session",<br/>"patient": {"name","age","gender"}}
+    S->>S: Create ConsultationSession
+    Note over S: Session active
+
+    loop Every 5 seconds
+        C->>S: {"type": "audio_chunk",<br/>"audio_data": "base64..."}
+        S->>S: Transcribe \u2192 Extract \u2192 Merge
+        S->>C: {"type": "extraction_update",<br/>"extraction": {5 fields}}
+    end
+
+    alt Error occurs
+        S->>C: {"type": "error",<br/>"message": "..."}
+        Note over C,S: Session continues
+    end
+
+    C->>S: {"type": "stop_session"}
+    S->>S: Cleanup session
+    Note over C,S: Connection closed`,
+
+        'diagram-4': `graph LR
+    subgraph ABSTRACTION["Service Layer"]
+        TS["TranscriptionService"]
+        ES["ExtractionService"]
+    end
+
+    subgraph STT_PROVIDERS["STT Providers"]
+        G["GroqWhisper<br/>whisper-large-v3<br/>FREE / 5x faster"]
+        O["OpenAIWhisper<br/>whisper-1<br/>$0.006/min"]
+        A["AzureWhisper<br/>deployment<br/>Enterprise SLA"]
+        M1["MockWhisper<br/>6 scripted responses<br/>Testing only"]
+    end
+
+    subgraph LLM_PROVIDERS["LLM Providers"]
+        AG["AzureGPT<br/>gpt-4.1-mini<br/>142-line system prompt"]
+        OG["OpenAIGPT<br/>gpt-4-turbo<br/>Generic prompt"]
+        M2["MockGPT<br/>keyword-based<br/>Testing only"]
+    end
+
+    TS -->|config: groq| G
+    TS -.->|config: openai| O
+    TS -.->|config: azure| A
+    TS -.->|config: mock| M1
+
+    ES -->|config: azure| AG
+    ES -.->|config: openai| OG
+    ES -.->|config: mock| M2
+
+    style ABSTRACTION fill:#1c2333,stroke:#bc8cff,color:#e6edf3
+    style STT_PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style LLM_PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3`,
+
+        'diagram-5': `graph TB
+    subgraph MEETING["Meeting Tab (meet.google.com / zoom.us)"]
+        CS["content.js<br/>Badge + Panel UI"]
+        CSS["content.css<br/>Injected styles"]
+        EXP["export.js<br/>PDF/Email/TXT"]
+        JSPDF["jspdf.umd.min.js<br/>366KB bundled"]
+    end
+
+    subgraph SW["Service Worker Context"]
+        BG2["background.js<br/>Orchestrator"]
+    end
+
+    subgraph OSD["Offscreen Document"]
+        OS["offscreen.js<br/>Audio capture"]
+        AWP["audio-worklet-processor.js<br/>Real-time audio thread"]
+        WAV["wav-encoder.js<br/>PCM \u2192 WAV"]
+    end
+
+    subgraph POPUP["Popup"]
+        PH["popup.html/js/css<br/>Settings: URL, Doctor, Clinic"]
+    end
+
+    CS <-->|chrome.runtime<br/>messages| BG2
+    BG2 <-->|chrome.runtime<br/>messages| OS
+    BG2 -->|tabCapture<br/>streamId| OS
+    OS --> AWP
+    AWP --> WAV
+    PH -->|chrome.storage.local| BG2
+    BG2 <-->|WebSocket| BACKEND["Backend Server"]
+
+    style MEETING fill:#1a1f2e,stroke:#58a6ff,color:#e6edf3
+    style SW fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
+    style OSD fill:#1a1f2e,stroke:#d29922,color:#e6edf3
+    style POPUP fill:#1a1f2e,stroke:#bc8cff,color:#e6edf3`,
+
+        'diagram-6': `stateDiagram-v2
+    [*] --> BadgeOnly: Page load on meeting URL
+
+    BadgeOnly --> PreSession: Badge clicked
+    PreSession --> BadgeOnly: Panel closed
+
+    PreSession --> Recording: Start Session<br/>(validates patient form)
+    Recording --> PostSession: session-ended message
+
+    PostSession --> PreSession: + New Session clicked
+
+    state BadgeOnly {
+        [*] --> Detected: Blue glow badge
+    }
+
+    state PreSession {
+        [*] --> FormReady: Patient form enabled
+        FormReady --> Connecting: Start clicked
+        Connecting --> FormReady: Connection failed
+    }
+
+    state Recording {
+        [*] --> Active: Green pulse badge
+        Active --> Active: extraction_update
+    }
+
+    state PostSession {
+        [*] --> Editable: Cards \u2192 Textareas
+        Editable --> Exporting: Export button clicked
+        Exporting --> Editable: Export complete
+    }`,
+
+        'diagram-7': `graph TD
+    CHUNK["Audio Chunk Received"] --> DECODE{"Base64<br/>Decode"}
+    DECODE -->|Success| TRANSCRIBE{"Transcribe<br/>API Call"}
+    DECODE -->|Failure| LOG_ERR1["Log error<br/>Skip chunk"]
+
+    TRANSCRIBE -->|Success| CHECK_LEN{"Transcript<br/>>50 chars?"}
+    TRANSCRIBE -->|API Error| SEND_ERR["Send error msg<br/>to client"]
+    SEND_ERR --> CONTINUE["Continue session<br/>Wait for next chunk"]
+
+    CHECK_LEN -->|Yes| EXTRACT{"Extract<br/>API Call"}
+    CHECK_LEN -->|No| SKIP["Skip extraction<br/>(too short)"]
+    SKIP --> CONTINUE
+
+    EXTRACT -->|Success| MERGE["Merge into<br/>session state"]
+    EXTRACT -->|API Error| SEND_ERR2["Send error msg<br/>Transcript still saved"]
+    SEND_ERR2 --> CONTINUE
+
+    MERGE --> SEND_UPDATE["Send extraction_update<br/>to client"]
+    SEND_UPDATE --> CONTINUE
+
+    LOG_ERR1 --> CONTINUE
+
+    style CONTINUE fill:#1c2333,stroke:#3fb950,color:#e6edf3
+    style SEND_ERR fill:#1c2333,stroke:#f85149,color:#e6edf3
+    style SEND_ERR2 fill:#1c2333,stroke:#f85149,color:#e6edf3`,
+
+        'diagram-8': `graph TB
+    subgraph CLIENTS["Clients (N doctors)"]
+        C1["Doctor 1<br/>Chrome Ext"]
+        C2["Doctor 2<br/>Chrome Ext"]
+        CN["Doctor N<br/>Chrome Ext"]
+    end
+
+    LB["Load Balancer<br/>Sticky sessions (WebSocket)"]
+
+    subgraph WORKERS["Application Workers"]
+        W1["Worker 1<br/>FastAPI + Uvicorn"]
+        W2["Worker 2<br/>FastAPI + Uvicorn"]
+        WN["Worker N<br/>FastAPI + Uvicorn"]
+    end
+
+    subgraph SHARED["Shared Infrastructure"]
+        REDIS["Redis<br/>Session store +<br/>pub/sub"]
+        QUEUE["Task Queue<br/>Celery / Bull"]
+        DB["PostgreSQL<br/>Session persistence +<br/>audit log"]
+        S3["Object Storage<br/>Audio archive"]
+    end
+
+    subgraph AI_POOL["AI Provider Pool"]
+        AI1["Groq API<br/>Rate limit: 100 RPM"]
+        AI2["Azure OpenAI<br/>Provisioned throughput"]
+    end
+
+    C1 & C2 & CN --> LB
+    LB --> W1 & W2 & WN
+    W1 & W2 & WN --> REDIS
+    W1 & W2 & WN --> QUEUE
+    QUEUE --> AI1 & AI2
+    W1 & W2 & WN --> DB
+    W1 & W2 & WN --> S3
+
+    style CLIENTS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style WORKERS fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
+    style SHARED fill:#1a1f2e,stroke:#58a6ff,color:#e6edf3
+    style AI_POOL fill:#1a1f2e,stroke:#bc8cff,color:#e6edf3`,
+
+        'diagram-9': `graph TB
+    subgraph UVICORN["Uvicorn ASGI Server (Single Process, Event Loop)"]
+        EL["asyncio Event Loop"]
+
+        subgraph S1["Session A (WebSocket 1)"]
+            direction LR
+            A1["chunk 1"] --> A2["chunk 2"] --> A3["chunk 3"]
+        end
+
+        subgraph S2["Session B (WebSocket 2)"]
+            direction LR
+            B1["chunk 1"] --> B2["chunk 2"] --> B3["chunk 3"]
+        end
+
+        subgraph S3["Session C (WebSocket 3)"]
+            direction LR
+            C1["chunk 1"] --> C2["chunk 2"]
+        end
+
+        EL --> S1 & S2 & S3
+    end
+
+    NOTE["Chunks within a session: SEQUENTIAL<br/>(preserves transcript ordering)<br/><br/>Sessions across connections: PARALLEL<br/>(async I/O, no blocking)"]
+
+    style UVICORN fill:#1a1f2e,stroke:#3fb950,color:#e6edf3
+    style NOTE fill:#1c2333,stroke:#58a6ff,color:#e6edf3`
+    };
+
+    (async function renderAllDiagrams() {
+        const ids = Object.keys(diagrams);
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            const el = document.getElementById(id);
+            if (!el) continue;
+            try {
+                const { svg } = await mermaid.render(id + '-svg', diagrams[id]);
+                el.innerHTML = svg;
+            } catch (err) {
+                el.innerHTML = '<div class="diagram-error">Diagram rendering error (' + id + '): ' + err.message + '</div>';
+                console.error('Failed to render ' + id + ':', err);
+            }
+        }
+    })();
 </script>
 
 </body>

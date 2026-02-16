@@ -33,7 +33,7 @@ server:
   port: 8000
 
 audio:
-  chunk_duration_seconds: 7  # Duration of each audio chunk for real-time transcription
+  chunk_duration_seconds: 6  # Duration of each audio chunk for real-time transcription
   sample_rate: 16000         # Groq Whisper optimized sample rate (16kHz)
   channels: 1                # Mono channel (required for medical clarity)
 

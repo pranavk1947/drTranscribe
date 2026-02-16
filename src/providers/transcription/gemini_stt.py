@@ -46,7 +46,8 @@ class GeminiSTTProvider(TranscriptionProvider):
                         {
                             "text": (
                                 "Transcribe the following audio recording exactly as spoken. "
-                                "This is a medical consultation between a doctor and patient. "
+                                "This is a medical consultation that may be in English, Hindi, or a mix of both. "
+                                "Transcribe in the language that was actually spoken. "
                                 "Return only the raw transcription text, no formatting, labels, or timestamps. "
                                 "IMPORTANT: If the audio is silent, contains only noise, or has no intelligible speech, "
                                 "respond with exactly an empty string. Do NOT invent or hallucinate any words."

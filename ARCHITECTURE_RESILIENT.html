@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>drTranscribe v2.0 — Resilient Architecture</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #1c2333;
+            --bg-card: #1a1f2e;
+            --border: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #bc8cff;
+            --accent-cyan: #39d2c0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #0d1117 0%, #1a1040 50%, #0d1117 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 48px 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 30% 50%, rgba(88, 166, 255, 0.08) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 50%, rgba(188, 140, 255, 0.06) 0%, transparent 50%);
+        }
+        .hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; }
+        .hero h1 { font-size: 36px; font-weight: 700; letter-spacing: -1px; margin-bottom: 8px; }
+        .hero h1 span { color: var(--accent-blue); }
+        .hero .subtitle { font-size: 16px; color: var(--text-secondary); margin-bottom: 16px; }
+        .hero .badges { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+        .hero .badge {
+            font-size: 12px; font-weight: 600;
+            padding: 4px 12px; border-radius: 16px;
+        }
+        .badge-blue { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+        .badge-green { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+        .badge-purple { background: rgba(188, 140, 255, 0.15); color: var(--accent-purple); }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 40px 24px; }
+
+        .diagram-container {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 12px; padding: 32px; margin: 0 0 40px;
+            overflow-x: auto;
+        }
+        .diagram-target { display: flex; justify-content: center; }
+        .diagram-target svg { max-width: 100%; height: auto; }
+        .diagram-label {
+            font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-muted); margin-bottom: 20px; text-align: center;
+        }
+        .diagram-error {
+            color: var(--accent-red); font-size: 13px; text-align: center;
+            padding: 20px; font-family: monospace;
+        }
+
+        .section { margin-bottom: 48px; }
+        .section-header {
+            display: flex; align-items: center; gap: 12px;
+            padding-bottom: 12px; border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+        .section-num {
+            font-size: 13px; font-weight: 700; font-family: monospace;
+            color: var(--accent-blue); background: rgba(88, 166, 255, 0.1);
+            padding: 3px 9px; border-radius: 6px;
+        }
+        .section-header h2 { font-size: 22px; font-weight: 600; }
+
+        p { margin-bottom: 14px; color: var(--text-secondary); font-size: 14px; }
+        strong { color: var(--text-primary); }
+
+        table {
+            width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;
+        }
+        th, td {
+            padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border);
+        }
+        th {
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--text-muted); font-weight: 600; background: var(--bg-tertiary);
+        }
+        td { color: var(--text-secondary); }
+        td code {
+            background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;
+            font-size: 12px; color: var(--accent-cyan);
+        }
+        tr:hover td { background: var(--bg-secondary); }
+
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin: 20px 0; }
+        .card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; padding: 20px;
+        }
+        .card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+        .card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 0; }
+        .card .tag {
+            display: inline-block; font-size: 11px; font-weight: 600;
+            padding: 2px 8px; border-radius: 10px; margin-top: 8px;
+        }
+        .tag-green { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+        .tag-blue { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+        .tag-orange { background: rgba(210, 153, 34, 0.15); color: var(--accent-orange); }
+        .tag-red { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+        .tag-purple { background: rgba(188, 140, 255, 0.15); color: var(--accent-purple); }
+        .tag-cyan { background: rgba(57, 210, 192, 0.15); color: var(--accent-cyan); }
+
+        .callout {
+            border-radius: 8px; padding: 16px 20px; margin: 16px 0;
+            border-left: 3px solid;
+        }
+        .callout-info { background: rgba(88, 166, 255, 0.06); border-color: var(--accent-blue); }
+        .callout-warn { background: rgba(210, 153, 34, 0.06); border-color: var(--accent-orange); }
+        .callout h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+        .callout p { font-size: 13px; margin-bottom: 0; }
+
+        .diff-table td:first-child { font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+        .diff-old { color: var(--accent-red); }
+        .diff-new { color: var(--accent-green); }
+
+        h3 { font-size: 17px; font-weight: 600; margin: 24px 0 12px; color: var(--text-primary); }
+        h3 .dec { color: var(--accent-purple); margin-right: 8px; }
+
+        ul, ol { margin: 12px 0; padding-left: 24px; }
+        li { color: var(--text-secondary); font-size: 14px; margin-bottom: 6px; }
+        li strong { color: var(--text-primary); }
+
+        hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+        @media (max-width: 768px) {
+            .hero { padding: 32px 16px; }
+            .hero h1 { font-size: 24px; }
+            .container { padding: 24px 16px; }
+            .card-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <div class="hero-content">
+        <h1><span>drTranscribe</span> &mdash; Resilient Architecture</h1>
+        <div class="subtitle">Zero SPOF &middot; Circuit Breakers &middot; Classifier Pipeline &middot; Distributed State</div>
+        <div class="badges">
+            <span class="badge badge-green">v2.0 Improved</span>
+            <span class="badge badge-blue">System Design</span>
+            <span class="badge badge-purple">Feb 2026</span>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- ARCHITECTURE DIAGRAM -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+    <div class="section-header">
+        <span class="section-num">01</span>
+        <h2>Resilient End-to-End Architecture</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">drTranscribe &mdash; Production-Ready Architecture with Zero Single Point of Failure</div>
+        <div id="diagram-architecture" class="diagram-target"></div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- WHAT CHANGED -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+    <div class="section-header">
+        <span class="section-num">02</span>
+        <h2>What Changed from V2 Baseline</h2>
+    </div>
+
+    <table class="diff-table">
+        <tr><th>Component</th><th>Before (V2)</th><th>After (Resilient)</th><th>Principle</th></tr>
+        <tr>
+            <td>Audio Capture</td>
+            <td class="diff-old">Disconnected orphan node &mdash; no edges</td>
+            <td class="diff-new">Connected: OFFSCREEN &rarr; CAPTURE &rarr; BG (actual data flow)</td>
+            <td><code>Correctness</code></td>
+        </tr>
+        <tr>
+            <td>Session State</td>
+            <td class="diff-old">In-memory dict (single process = SPOF)</td>
+            <td class="diff-new">Redis Cluster with TTL &mdash; distributed, survives restarts</td>
+            <td><code>No SPOF</code></td>
+        </tr>
+        <tr>
+            <td>Transport</td>
+            <td class="diff-old">Single WebSocket endpoint (ws://)</td>
+            <td class="diff-new">Load Balancer + WSS Gateway &mdash; sticky sessions, TLS</td>
+            <td><code>No SPOF + Security</code></td>
+        </tr>
+        <tr>
+            <td>STT Providers</td>
+            <td class="diff-old">Config-selected + dotted "fallback" lines (no mechanism)</td>
+            <td class="diff-new">Circuit Breaker with 4-provider priority chain (Groq &rarr; Gemini &rarr; OpenAI &rarr; Azure)</td>
+            <td><code>Circuit Breaker</code></td>
+        </tr>
+        <tr>
+            <td>LLM Providers</td>
+            <td class="diff-old">Same &mdash; no failover mechanism</td>
+            <td class="diff-new">Circuit Breaker with Azure GPT &rarr; OpenAI GPT failover</td>
+            <td><code>Circuit Breaker</code></td>
+        </tr>
+        <tr>
+            <td>Extraction Pipeline</td>
+            <td class="diff-old">Transcription &rarr; Extraction (direct)</td>
+            <td class="diff-new">Transcription &rarr; <strong>Classifier</strong> &rarr; Extraction (enriched context)</td>
+            <td><code>Separation of Concerns</code></td>
+        </tr>
+        <tr>
+            <td>Error Handling</td>
+            <td class="diff-old">Per-chunk try/catch, skip on failure</td>
+            <td class="diff-new">Dead Letter Queue + Retry Worker with exponential backoff</td>
+            <td><code>Graceful Degradation</code></td>
+        </tr>
+        <tr>
+            <td>Observability</td>
+            <td class="diff-old">Logging only</td>
+            <td class="diff-new">Health Monitor tracking circuit states + provider latency</td>
+            <td><code>Observability</code></td>
+        </tr>
+        <tr>
+            <td>Gemini STT</td>
+            <td class="diff-old">Existed in code but missing from architecture diagram</td>
+            <td class="diff-new">Added to STT Provider Pool as fallback 1 (already implemented)</td>
+            <td><code>Diagram Accuracy</code></td>
+        </tr>
+    </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- ENGINEERING PRINCIPLES -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+    <div class="section-header">
+        <span class="section-num">03</span>
+        <h2>Engineering Principles Applied</h2>
+    </div>
+
+    <div class="card-grid">
+        <div class="card">
+            <h4>1. Circuit Breaker Pattern</h4>
+            <p>Each external provider call goes through a circuit breaker. After N consecutive failures, the circuit
+            <strong>opens</strong> and traffic instantly routes to the next provider in the priority chain. After a
+            cooldown period, the circuit enters <strong>half-open</strong> state and tests the original provider with
+            a single request. This prevents cascading failures and eliminates provider downtime as a SPOF.</p>
+            <span class="tag tag-red">Resilience</span>
+        </div>
+        <div class="card">
+            <h4>2. Bulkhead Isolation</h4>
+            <p>STT and LLM failures are isolated in separate circuit breakers. A Groq outage cannot affect GPT extraction.
+            Each session is processed independently &mdash; one session's failure never impacts another. The pipeline stages
+            (transcription, classification, extraction) are isolated so a classifier failure can be bypassed while STT + LLM
+            continue working.</p>
+            <span class="tag tag-red">Resilience</span>
+        </div>
+        <div class="card">
+            <h4>3. Distributed State (Redis)</h4>
+            <p>Replaces in-memory session dict with Redis Cluster. Sessions survive server restarts. Multiple FastAPI workers
+            share state via Redis, enabling horizontal scaling. TTL-based cleanup prevents memory leaks. Pub/sub enables
+            real-time session events across workers. Eliminates the single-process server as a SPOF.</p>
+            <span class="tag tag-blue">No SPOF</span>
+        </div>
+        <div class="card">
+            <h4>4. Dead Letter Queue + Retry</h4>
+            <p>Failed audio chunks are not silently dropped &mdash; they enter a DLQ. A retry worker processes them with
+            exponential backoff (1s, 2s, 4s, 8s...) up to a max retry count. After exhausting retries, chunks are logged
+            for manual inspection. The full transcript on next successful chunk recovers context from prior failures.</p>
+            <span class="tag tag-orange">Fault Tolerance</span>
+        </div>
+        <div class="card">
+            <h4>5. Health Monitoring</h4>
+            <p>Active health monitor tracks: provider response latency (P50/P95/P99), circuit breaker states (closed/open/half-open),
+            error rates per provider, and queue depth. Exposes <code>/health</code> (liveness) and <code>/readiness</code>
+            (can accept traffic) endpoints. Enables proactive alerting before failures cascade.</p>
+            <span class="tag tag-green">Observability</span>
+        </div>
+        <div class="card">
+            <h4>6. Graceful Degradation</h4>
+            <p>The system degrades gracefully at every layer: if Classifier is down, extraction proceeds without enriched
+            context. If all STT providers fail, chunks are queued for retry. If Redis is unreachable, fall back to local
+            in-memory state with a warning. If WebSocket drops, the client preserves all extraction data captured so far.</p>
+            <span class="tag tag-orange">Fault Tolerance</span>
+        </div>
+        <div class="card">
+            <h4>7. Provider Pool with Priority Chain</h4>
+            <p>No single AI provider is a SPOF. STT has a 4-deep fallback chain (Groq &rarr; Gemini &rarr; OpenAI &rarr; Azure).
+            LLM has a 2-deep chain (Azure GPT &rarr; OpenAI GPT). The circuit breaker automatically routes to the next
+            healthy provider. Adding a new provider is a config change, not a code change (Strategy Pattern).</p>
+            <span class="tag tag-blue">No SPOF</span>
+        </div>
+        <div class="card">
+            <h4>8. Classifier as Enrichment Layer</h4>
+            <p>The Classifier sits between transcription and extraction. It detects medical intent (diagnosis, prescription,
+            follow-up), extracts entities (drug names, symptoms, body parts), and determines speciality context. This enriched
+            context improves extraction accuracy. The Classifier is an external service &mdash; if it fails, the pipeline
+            continues with raw transcript (graceful degradation).</p>
+            <span class="tag tag-purple">Separation of Concerns</span>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SPOF ELIMINATION MAP -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+    <div class="section-header">
+        <span class="section-num">04</span>
+        <h2>SPOF Elimination Map</h2>
+    </div>
+
+    <p>Every component that was a single point of failure in V2, and how it is eliminated:</p>
+
+    <table>
+        <tr><th>SPOF (V2)</th><th>Failure Impact</th><th>Mitigation (Resilient)</th><th>Recovery Time</th></tr>
+        <tr>
+            <td><strong>Single FastAPI process</strong></td>
+            <td>All sessions lost, total outage</td>
+            <td>Multiple workers behind LB + Redis state</td>
+            <td><code>&lt; 1s</code> (LB routes to healthy worker)</td>
+        </tr>
+        <tr>
+            <td><strong>In-memory session dict</strong></td>
+            <td>All session state lost on crash/restart</td>
+            <td>Redis Cluster with persistence + TTL</td>
+            <td><code>0s</code> (state is external)</td>
+        </tr>
+        <tr>
+            <td><strong>Groq API (sole STT)</strong></td>
+            <td>No transcription, pipeline stalls</td>
+            <td>Circuit breaker &rarr; Gemini &rarr; OpenAI &rarr; Azure</td>
+            <td><code>&lt; 500ms</code> (next request auto-routes)</td>
+        </tr>
+        <tr>
+            <td><strong>Azure GPT (sole LLM)</strong></td>
+            <td>No extraction, cards stop updating</td>
+            <td>Circuit breaker &rarr; OpenAI GPT fallback</td>
+            <td><code>&lt; 500ms</code> (next request auto-routes)</td>
+        </tr>
+        <tr>
+            <td><strong>WebSocket (single endpoint)</strong></td>
+            <td>New connections refused</td>
+            <td>Load-balanced WebSocket Gateway pool</td>
+            <td><code>&lt; 1s</code> (LB health check)</td>
+        </tr>
+        <tr>
+            <td><strong>Failed audio chunks</strong></td>
+            <td>Data silently dropped</td>
+            <td>DLQ + retry worker with exponential backoff</td>
+            <td><code>1-30s</code> (retry attempts)</td>
+        </tr>
+    </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CLASSIFIER PIPELINE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+    <div class="section-header">
+        <span class="section-num">05</span>
+        <h2>Classifier Pipeline Detail</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Extraction Pipeline &mdash; With Classifier Enrichment</div>
+        <div id="diagram-classifier" class="diagram-target"></div>
+    </div>
+
+    <div class="callout callout-info">
+        <h4>Why a Classifier?</h4>
+        <p>The current system sends raw transcript directly to the LLM for extraction. Adding a Classifier between
+        transcription and extraction provides three advantages:</p>
+    </div>
+    <ol>
+        <li><strong>Better extraction accuracy</strong> &mdash; The LLM receives pre-identified entities and intents, reducing hallucination and missed data</li>
+        <li><strong>Speciality-aware prompts</strong> &mdash; A cardiology consultation needs different extraction focus than an orthopaedic one. The Classifier detects speciality and the Extraction Service selects the optimal prompt template</li>
+        <li><strong>Cost optimization</strong> &mdash; Lightweight classification (fast, cheap model or rule-based) pre-filters noise before sending to the expensive LLM. Short or irrelevant chunks can be skipped entirely</li>
+    </ol>
+
+    <div class="callout callout-warn">
+        <h4>Graceful Degradation</h4>
+        <p>If the Classifier service is unavailable, the pipeline falls back to sending the raw transcript directly
+        to the Extraction Service (current V2 behavior). The Classifier is an <strong>enrichment layer</strong>, not a
+        hard dependency.</p>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CIRCUIT BREAKER STATE MACHINE -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+    <div class="section-header">
+        <span class="section-num">06</span>
+        <h2>Circuit Breaker State Machine</h2>
+    </div>
+
+    <div class="diagram-container">
+        <div class="diagram-label">Circuit Breaker &mdash; Three-State Lifecycle</div>
+        <div id="diagram-circuitbreaker" class="diagram-target"></div>
+    </div>
+
+    <h3><span class="dec">#</span> Recommended Configuration</h3>
+    <table>
+        <tr><th>Parameter</th><th>STT Circuit Breaker</th><th>LLM Circuit Breaker</th><th>Rationale</th></tr>
+        <tr>
+            <td><code>failure_threshold</code></td>
+            <td>3 consecutive failures</td>
+            <td>3 consecutive failures</td>
+            <td>Enough to filter transient errors, fast enough to react</td>
+        </tr>
+        <tr>
+            <td><code>cooldown_period</code></td>
+            <td>30 seconds</td>
+            <td>60 seconds</td>
+            <td>LLM APIs recover slower (rate limits); STT is lighter</td>
+        </tr>
+        <tr>
+            <td><code>half_open_max_calls</code></td>
+            <td>1</td>
+            <td>1</td>
+            <td>Single probe request to test recovery</td>
+        </tr>
+        <tr>
+            <td><code>fallback_chain</code></td>
+            <td>Groq &rarr; Gemini &rarr; OpenAI &rarr; Azure</td>
+            <td>Azure GPT &rarr; OpenAI GPT</td>
+            <td>Ordered by: cost, latency, quality</td>
+        </tr>
+    </table>
+</div>
+
+<hr>
+
+<div style="text-align: center; padding: 24px 0 48px; color: var(--text-muted); font-size: 13px;">
+    drTranscribe Resilient Architecture &mdash; Confidential &mdash; Loop Health Engineering
+</div>
+
+</div><!-- /container -->
+
+<!-- Mermaid.js -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+    // ─── Diagram definitions in JS (immune to HTML parsing) ───────────
+    const diagrams = {
+        'diagram-architecture': `graph TB
+    subgraph CLIENT["CLIENT LAYER — Chrome Extension"]
+        direction TB
+        BADGE["Floating Badge<br/>Non-intrusive activation"]
+        PANEL["Overlay Panel<br/>Patient form + 5 extraction cards"]
+        BG["Background Service Worker<br/>tabCapture + WebSocket relay"]
+        OFFSCREEN["Offscreen Document<br/>Tab audio + mic capture"]
+        CAPTURE["Audio Capture<br/>AudioWorklet + WAV Encoder"]
+        EXPORT["Export Module<br/>PDF / Gmail / Clipboard / TXT"]
+
+        BADGE -->|click| PANEL
+        PANEL -->|start session| BG
+        BG -->|streamId| OFFSCREEN
+        OFFSCREEN -->|raw PCM stream| CAPTURE
+        CAPTURE -->|base64 WAV chunks| BG
+        PANEL -->|post-session| EXPORT
+    end
+
+    subgraph TRANSPORT["TRANSPORT LAYER"]
+        LB["Load Balancer<br/>WSS + sticky sessions"]
+        WS["WebSocket Gateway<br/>Persistent bidirectional"]
+        LB --> WS
+    end
+
+    subgraph SERVER["SERVER LAYER — FastAPI + Uvicorn Workers"]
+        direction TB
+        WSH["WebSocket Handler<br/>Routing + pipeline orchestration"]
+        API["REST API<br/>/health, /readiness, /api/config"]
+        HM["Health Monitor<br/>Provider latency + circuit breaker states"]
+
+        SM["Session Manager"]
+        REDIS[("Redis Cluster<br/>Distributed sessions + pub/sub + TTL")]
+        SM <--> |read/write| REDIS
+
+        subgraph PIPELINE["AI PIPELINE — per audio chunk"]
+            direction LR
+            TS["Transcription<br/>Service"]
+            CB1{{"STT Circuit<br/>Breaker"}}
+            CLS["Classifier<br/>Medical intent +<br/>entity routing"]
+            ES["Extraction<br/>Service"]
+            CB2{{"LLM Circuit<br/>Breaker"}}
+            TS --> CB1 -->|transcript| CLS -->|enriched context| ES --> CB2
+        end
+
+        DLQ["Dead Letter Queue + Retry Worker<br/>Failed chunks + exponential backoff"]
+
+        WSH --> SM
+        WSH --> TS
+        WSH -.->|on chunk failure| DLQ
+        DLQ -.->|retry with backoff| TS
+        HM -.->|monitor| CB1
+        HM -.->|monitor| CB2
+    end
+
+    subgraph PROVIDERS["EXTERNAL AI PROVIDERS"]
+        direction TB
+        subgraph STT["STT Provider Pool — prioritized fallback"]
+            direction LR
+            GROQ["1. Groq Whisper<br/>whisper-large-v3"]
+            GEMINI["2. Gemini STT<br/>gemini-2.0-flash"]
+            OAI_W["3. OpenAI Whisper<br/>whisper-1"]
+            AZURE_W["4. Azure Whisper<br/>deployment"]
+        end
+        subgraph LLM["LLM Provider Pool — prioritized fallback"]
+            direction LR
+            GPT["1. Azure GPT<br/>gpt-4.1-mini"]
+            OAI_G["2. OpenAI GPT<br/>gpt-4-turbo"]
+        end
+        EXT_CLS["Classifier Service<br/>Medical NER + speciality detection"]
+    end
+
+    BG <-->|JSON over WSS| LB
+    WS <--> WSH
+    CB1 -->|primary| GROQ
+    CB1 -.->|fallback 1| GEMINI
+    CB1 -.->|fallback 2| OAI_W
+    CB1 -.->|fallback 3| AZURE_W
+    CB2 -->|primary| GPT
+    CB2 -.->|fallback| OAI_G
+    CLS -.->|classify| EXT_CLS
+
+    style CLIENT fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style TRANSPORT fill:#1c2333,stroke:#58a6ff,color:#e6edf3
+    style SERVER fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style PIPELINE fill:#1c2333,stroke:#bc8cff,color:#e6edf3
+    style PROVIDERS fill:#1a1f2e,stroke:#30363d,color:#e6edf3
+    style STT fill:#161b22,stroke:#30363d,color:#e6edf3
+    style LLM fill:#161b22,stroke:#30363d,color:#e6edf3`,
+
+        'diagram-classifier': `graph LR
+    TRANSCRIPT["Raw Transcript<br/>Hindi / English / Mixed"]
+
+    subgraph CLASSIFY["CLASSIFIER SERVICE"]
+        direction TB
+        NER["Medical NER<br/>Drug names, symptoms,<br/>body parts, procedures"]
+        INTENT["Intent Detection<br/>complaint / diagnosis /<br/>prescription / advice"]
+        SPEC["Speciality Router<br/>cardiology / ortho /<br/>general / ENT"]
+    end
+
+    CONTEXT["Enriched Context<br/>transcript + entities +<br/>intents + speciality"]
+
+    subgraph EXTRACT["EXTRACTION SERVICE"]
+        direction TB
+        PROMPT["Prompt Builder<br/>Speciality-aware template"]
+        LLM_CALL["LLM Call<br/>via circuit breaker"]
+        PARSE["JSON Parser<br/>Validate 5-field schema"]
+        PROMPT --> LLM_CALL --> PARSE
+    end
+
+    RESULT["ExtractionResult<br/>chief_complaint, diagnosis,<br/>medicine, advice, next_steps"]
+
+    TRANSCRIPT --> CLASSIFY
+    NER & INTENT & SPEC --> CONTEXT
+    CONTEXT --> EXTRACT
+    PARSE --> RESULT
+
+    style CLASSIFY fill:#1c2333,stroke:#bc8cff,color:#e6edf3
+    style EXTRACT fill:#1c2333,stroke:#58a6ff,color:#e6edf3`,
+
+        'diagram-circuitbreaker': `stateDiagram-v2
+    [*] --> Closed
+
+    Closed --> Open : failure_count >= threshold
+    Closed --> Closed : success (reset counter)
+
+    Open --> HalfOpen : cooldown_timer expires
+
+    HalfOpen --> Closed : probe request succeeds
+    HalfOpen --> Open : probe request fails
+
+    state Closed {
+        [*] --> Healthy : All requests route to primary provider
+    }
+
+    state Open {
+        [*] --> Fallback : All requests route to next provider in chain
+    }
+
+    state HalfOpen {
+        [*] --> Testing : Single probe request to original provider
+    }`
+    };
+
+    // ─── Render all diagrams programmatically ─────────────────────────
+    mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: 'dark',
+        themeVariables: {
+            darkMode: true,
+            background: '#161b22',
+            primaryColor: '#1c2333',
+            primaryTextColor: '#e6edf3',
+            primaryBorderColor: '#30363d',
+            lineColor: '#58a6ff',
+            secondaryColor: '#1a1f2e',
+            tertiaryColor: '#1c2333',
+            noteBkgColor: '#1c2333',
+            noteTextColor: '#e6edf3',
+            noteBorderColor: '#30363d',
+            actorBkg: '#1c2333',
+            actorTextColor: '#e6edf3',
+            actorBorder: '#58a6ff',
+            signalColor: '#58a6ff',
+            labelBoxBkgColor: '#1c2333',
+            labelTextColor: '#e6edf3'
+        },
+        flowchart: { curve: 'basis', padding: 16, htmlLabels: true },
+        sequence: { actorMargin: 40, messageMargin: 30 }
+    });
+
+    async function renderDiagrams() {
+        for (const [targetId, code] of Object.entries(diagrams)) {
+            const el = document.getElementById(targetId);
+            if (!el) continue;
+            try {
+                const { svg } = await mermaid.render(targetId + '-svg', code);
+                el.innerHTML = svg;
+            } catch (err) {
+                console.error('Mermaid render failed for ' + targetId + ':', err);
+                el.innerHTML = '<div class="diagram-error">Diagram render error: ' +
+                    err.message.substring(0, 200) + '</div>';
+            }
+        }
+    }
+    renderDiagrams();
+</script>
+
+</body>
+</html>

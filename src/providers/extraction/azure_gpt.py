@@ -14,6 +14,8 @@ class AzureGPTProvider(ExtractionProvider):
     
     SYSTEM_PROMPT = """You are a medical transcription assistant. Your role is to EXTRACT and STRUCTURE what was actually said - NOT to suggest, recommend, or predict anything.
 
+**LANGUAGE: The transcript may be in Hindi, English, or a mix of both (code-switching is common in Indian medical consultations). Regardless of the transcript language, ALL extracted fields MUST be written in English. Translate any Hindi content to English.**
+
 ⚠️ MEDICAL SAFETY CRITICAL ⚠️
 You are NOT a medical assistant. You are a TRANSCRIPTION assistant.
 ONLY write down what the doctor EXPLICITLY SAID.
@@ -205,7 +207,9 @@ Medical records must be 100% accurate to what was actually said - no more, no le
 - Gender: {patient.gender}
 
 Transcript:
-{transcript}"""
+{transcript}
+
+Note: The transcript may contain Hindi or mixed Hindi-English speech. Extract and write all fields in English only."""
         
         if previous_extraction:
             prompt += f"""
