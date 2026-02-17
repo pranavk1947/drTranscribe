@@ -239,9 +239,17 @@
                 return;
             }
 
-            // Validate Google Meet URL
-            if (!gmeetLink.includes('meet.google.com')) {
-                showStatus('Please enter a valid Google Meet link', 'error');
+            // Validate Google Meet URL properly
+            try {
+                const url = new URL(gmeetLink);
+                if (url.hostname !== 'meet.google.com') {
+                    showStatus('Please enter a valid Google Meet link (https://meet.google.com/...)', 'error');
+                    document.getElementById('gmeetLink').focus();
+                    return;
+                }
+            } catch {
+                showStatus('Invalid URL format', 'error');
+                document.getElementById('gmeetLink').focus();
                 return;
             }
 
@@ -264,23 +272,27 @@
             try {
                 if (!broadcastChannel) {
                     initBroadcastChannel();
+                    if (!broadcastChannel) {
+                        showStatus('Failed to initialize communication channel. Please refresh the page.', 'error');
+                        disableForm(false);
+                        return;
+                    }
                 }
 
+                // Open Google Meet immediately (before broadcast to avoid popup blockers)
+                const newWindow = window.open(gmeetLink, '_blank');
+                if (!newWindow || newWindow.closed) {
+                    showStatus('Please allow popups for this site to open Google Meet', 'error');
+                    logDebug('Popup blocked - user needs to allow popups', 'error');
+                    return;
+                }
+                logDebug('Opened Google Meet in new tab', 'success');
+
+                // Then send broadcast message
                 broadcastChannel.postMessage(message);
                 logDebug('Sent start-consult message:', message, 'success');
 
                 showStatus('Consult started - GMeet opened. Waiting for extraction results...', 'success');
-
-                // Open Google Meet in new tab
-                setTimeout(() => {
-                    const newWindow = window.open(gmeetLink, '_blank');
-                    if (!newWindow) {
-                        showStatus('Please allow popups to open Google Meet', 'warning');
-                        logDebug('Popup blocked - user needs to allow popups', 'warning');
-                    } else {
-                        logDebug('Opened Google Meet in new tab', 'success');
-                    }
-                }, 500);
 
                 // Disable form during session
                 disableForm(true);
