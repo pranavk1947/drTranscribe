@@ -151,6 +151,7 @@
         const CHANNEL_NAME = 'drTranscribe-channel';
         let broadcastChannel = null;
         let currentAppointmentId = null;
+        let currentPatientData = null; // Store current appointment data for pull requests
 
         // DOM Elements
         const consultForm = document.getElementById('consultForm');
@@ -188,8 +189,30 @@
             if (data.type === 'export-to-emr') {
                 logDebug('Received export-to-emr message', 'success');
                 displayExtractionResults(data);
+            } else if (data.type === 'request-patient-data') {
+                logDebug('Received request-patient-data message', 'info');
+                handlePatientDataRequest();
             } else {
                 logDebug('Unknown message type: ' + data.type, 'warning');
+            }
+        }
+
+        // Handle request for patient data from extension
+        function handlePatientDataRequest() {
+            if (!currentPatientData) {
+                logDebug('No patient data available to send', 'warning');
+                return;
+            }
+
+            // Send patient data response
+            try {
+                broadcastChannel.postMessage({
+                    type: 'patient-data-response',
+                    ...currentPatientData
+                });
+                logDebug('Sent patient-data-response:', currentPatientData, 'success');
+            } catch (error) {
+                logDebug('Failed to send patient data: ' + error.message, 'error');
             }
         }
 
@@ -255,9 +278,8 @@
 
             currentAppointmentId = appointmentId;
 
-            // Create start-consult message
-            const message = {
-                type: 'start-consult',
+            // Store patient data for pull requests from extension
+            currentPatientData = {
                 appointmentId: appointmentId,
                 patient: {
                     name: patientName,
@@ -268,34 +290,30 @@
                 timestamp: new Date().toISOString()
             };
 
-            // Send via Broadcast Channel
-            try {
+            // Initialize Broadcast Channel if needed
+            if (!broadcastChannel) {
+                initBroadcastChannel();
                 if (!broadcastChannel) {
-                    initBroadcastChannel();
-                    if (!broadcastChannel) {
-                        showStatus('Failed to initialize communication channel. Please refresh the page.', 'error');
-                        disableForm(false);
-                        return;
-                    }
-                }
-
-                // Open Google Meet immediately (before broadcast to avoid popup blockers)
-                const newWindow = window.open(gmeetLink, '_blank');
-                if (!newWindow || newWindow.closed) {
-                    showStatus('Please allow popups for this site to open Google Meet', 'error');
-                    logDebug('Popup blocked - user needs to allow popups', 'error');
+                    showStatus('Failed to initialize communication channel. Please refresh the page.', 'error');
+                    disableForm(false);
                     return;
                 }
-                logDebug('Opened Google Meet in new tab', 'success');
+            }
 
-                // Then send broadcast message
-                broadcastChannel.postMessage(message);
-                logDebug('Sent start-consult message:', message, 'success');
+            // Open Google Meet immediately (no broadcast - extension will pull data on badge click)
+            const newWindow = window.open(gmeetLink, '_blank');
+            if (!newWindow || newWindow.closed) {
+                showStatus('Please allow popups for this site to open Google Meet', 'error');
+                logDebug('Popup blocked - user needs to allow popups', 'error');
+                return;
+            }
+            logDebug('Opened Google Meet in new tab', 'success');
+            logDebug('Patient data stored, ready for extension request:', currentPatientData, 'info');
 
-                showStatus('Consult started - GMeet opened. Waiting for extraction results...', 'success');
+            showStatus('Consult started - GMeet opened. Click drT badge in GMeet to start recording.', 'success');
 
-                // Disable form during session
-                disableForm(true);
+            // Disable form during session
+            disableForm(true);
 
             } catch (error) {
                 logDebug('Failed to send message: ' + error.message, 'error');

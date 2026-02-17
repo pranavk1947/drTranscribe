@@ -210,11 +210,14 @@
         badge.className = 'drt-badge drt-badge-detected';
         badge.textContent = 'drT';
         badge.title = 'drTranscribe - Click to open';
-        badge.addEventListener('click', () => {
+        badge.addEventListener('click', async () => {
             const panel = document.getElementById('drt-panel');
             if (panel) {
+                // Panel already exists, just toggle visibility
                 panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
             } else {
+                // First time opening - request patient data from EMR
+                await requestPatientDataFromEMR();
                 injectPanel();
             }
         });
@@ -779,11 +782,11 @@
             broadcastChannel = new BroadcastChannel('drTranscribe-channel');
 
             broadcastChannel.onmessage = (event) => {
-                const { type, data } = event.data;
+                const { type } = event.data;
 
                 switch (type) {
-                    case 'start-consult':
-                        handleStartConsultBroadcast(data);
+                    case 'patient-data-response':
+                        handlePatientDataResponse(event.data);
                         break;
 
                     default:
@@ -798,24 +801,50 @@
     }
 
     /**
-     * Handle start-consult message from EMR page
-     * Stores appointmentData for later use in exportToEMR
+     * Request patient data from EMR page via Broadcast Channel
+     * Called when user clicks badge for the first time
+     * Returns a promise that resolves when data is received or times out
      */
-    function handleStartConsultBroadcast(data) {
-        console.log('[drT Broadcast] Appointment data received:', data);
+    async function requestPatientDataFromEMR() {
+        if (!broadcastChannel) {
+            console.log('[drT Broadcast] Channel not initialized, skipping EMR request');
+            return;
+        }
 
-        // Store appointment data for export
+        console.log('[drT Broadcast] Requesting patient data from EMR...');
+
+        // Send request
+        broadcastChannel.postMessage({
+            type: 'request-patient-data',
+            timestamp: new Date().toISOString()
+        });
+
+        // Wait for response with timeout (2 seconds)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        if (appointmentData) {
+            console.log('[drT Broadcast] Patient data received from EMR');
+        } else {
+            console.log('[drT Broadcast] No patient data received (timeout or no EMR page)');
+        }
+    }
+
+    /**
+     * Handle patient-data-response message from EMR page
+     * Stores appointmentData for use in session and export
+     */
+    function handlePatientDataResponse(data) {
+        console.log('[drT Broadcast] Patient data received:', data);
+
+        // Store appointment data for use in session and export
         appointmentData = data;
 
-        // Open panel if not already open, then update display
+        // Update panel display if panel already exists
         const panel = document.getElementById('drt-panel');
-        if (!panel) {
-            injectPanel();
-            // updatePatientDisplay is called at end of injectPanel
-        } else {
-            // Panel already open, update display
+        if (panel) {
             updatePatientDisplay();
         }
+        // If panel doesn't exist yet, updatePatientDisplay will be called by injectPanel
     }
 
     /**
