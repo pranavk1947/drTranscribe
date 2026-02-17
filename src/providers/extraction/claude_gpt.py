@@ -87,7 +87,7 @@ Return ONLY the complete merged JSON object with all 5 fields."""
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = "claude-3-5-sonnet-20240620",
         temperature: float = 0.3,
         max_tokens: int = 1024
     ):
