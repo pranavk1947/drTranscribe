@@ -850,9 +850,7 @@
         }
     }
 
-    // Initialize Broadcast Channel on script load
-    // 3-second timeout to handle race condition with EMR page
-    setTimeout(() => {
-        initBroadcastChannel();
-    }, 3000);
+    // Initialize Broadcast Channel immediately when content script loads
+    // This ensures the listener is ready before EMR demo broadcasts messages
+    initBroadcastChannel();
 })();
