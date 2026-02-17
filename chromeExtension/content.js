@@ -739,7 +739,7 @@
 
         try {
             broadcastChannel.postMessage({
-                type: 'consult-complete',
+                type: 'export-to-emr',
                 data: {
                     appointmentId: appointmentData.appointmentId,
                     extraction: extraction
