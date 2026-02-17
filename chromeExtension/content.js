@@ -590,7 +590,8 @@
             exportBar.innerHTML = `
                 <div class="drt-section-title">Export</div>
                 <div class="drt-export-actions">
-                    <button class="drt-btn-export drt-btn-export-primary" id="drt-export-pdf">Export PDF</button>
+                    <button class="drt-btn-export drt-btn-export-primary" id="drt-export-emr" style="grid-column: 1 / -1;">Export to EMR</button>
+                    <button class="drt-btn-export" id="drt-export-pdf">Export PDF</button>
                     <button class="drt-btn-export" id="drt-export-email">Open in Gmail</button>
                     <button class="drt-btn-export" id="drt-export-clipboard">Copy to Clipboard</button>
                     <button class="drt-btn-export" id="drt-export-txt">Download TXT</button>
@@ -600,6 +601,25 @@
             results.parentNode.insertBefore(exportBar, results.nextSibling);
 
             // Wire export buttons
+
+            // Export to EMR
+            document.getElementById('drt-export-emr').addEventListener('click', () => {
+                const extraction = {
+                    chief_complaint: document.getElementById('drt-edit-chief_complaint')?.value || '',
+                    diagnosis: document.getElementById('drt-edit-diagnosis')?.value || '',
+                    medicine: document.getElementById('drt-edit-medicine')?.value || '',
+                    advice: document.getElementById('drt-edit-advice')?.value || '',
+                    next_steps: document.getElementById('drt-edit-next_steps')?.value || ''
+                };
+
+                const success = exportToEMR(extraction);
+                if (success) {
+                    showToast('Results sent to EMR page!');
+                } else {
+                    showToast('EMR page not available. Please open the EMR page first.');
+                }
+            });
+
             document.getElementById('drt-export-pdf').addEventListener('click', async () => {
                 const settings = await chrome.storage.local.get(['doctorName', 'clinicName']);
                 window.DrTExport.exportPDF(currentPatient, {
