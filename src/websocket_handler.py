@@ -99,15 +99,20 @@ class WebSocketHandler:
         try:
             start_msg = StartSessionMessage(**message)
             session_id = str(uuid.uuid4())
-            
+
             session = ConsultationSession(
                 session_id=session_id,
-                patient=start_msg.patient
+                patient=start_msg.patient,
+                appointment_id=start_msg.appointmentId
             )
-            
+
+            # Log appointment ID if provided
+            if start_msg.appointmentId:
+                logger.info(f"Session started for appointment: {start_msg.appointmentId}")
+
             self.session_manager.create_session(session)
             logger.info(f"Started session {session_id} for patient: {start_msg.patient.name}")
-            
+
             return session_id
         
         except Exception as e:

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from .patient import Patient
 from .extraction import ExtractionResult
@@ -7,9 +7,10 @@ from .extraction import ExtractionResult
 
 class ConsultationSession(BaseModel):
     """Consultation session model."""
-    
+
     session_id: str = Field(..., description="Unique session identifier")
     patient: Patient = Field(..., description="Patient information")
+    appointment_id: Optional[str] = Field(default=None, description="EMR appointment identifier")
     started_at: datetime = Field(default_factory=datetime.utcnow)
     transcript_chunks: List[str] = Field(default_factory=list)
     extraction: ExtractionResult = Field(default_factory=ExtractionResult)

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from .patient import Patient
 from .extraction import ExtractionResult
@@ -6,8 +6,9 @@ from .extraction import ExtractionResult
 
 class StartSessionMessage(BaseModel):
     """Message to start a new consultation session."""
-    
+
     type: Literal["start_session"] = "start_session"
+    appointmentId: Optional[str] = None
     patient: Patient
 
 

@@ -1,12 +1,14 @@
+from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 
 class Patient(BaseModel):
     """Patient information model."""
-    
+
     name: str = Field(..., min_length=1, max_length=200)
     age: int = Field(..., ge=0, le=150)
     gender: str = Field(..., min_length=1, max_length=50)
+    history: Optional[str] = None
     
     @field_validator('name')
     @classmethod
