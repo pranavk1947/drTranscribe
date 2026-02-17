@@ -7,7 +7,7 @@
 
 .drt-badge {
     position: fixed;
-    bottom: 24px;
+    bottom: 80px;  /* Changed from 24px */
     right: 24px;
     width: 44px;
     height: 44px;
