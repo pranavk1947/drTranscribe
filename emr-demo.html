@@ -314,11 +314,6 @@
 
             // Disable form during session
             disableForm(true);
-
-            } catch (error) {
-                logDebug('Failed to send message: ' + error.message, 'error');
-                showStatus('Failed to start consultation: ' + error.message, 'error');
-            }
         });
 
         // Clear form button
