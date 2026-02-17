@@ -241,20 +241,33 @@
             </div>
 
             <div class="drt-body" id="drt-body">
-                <div class="drt-section drt-patient-form">
-                    <div class="drt-section-title">Patient Info</div>
-                    <div class="drt-form-row">
-                        <input type="text" id="drt-patient-name" class="drt-input" placeholder="Patient Name" />
+                <div class="drt-section">
+                    <!-- Compact patient display (shown when appointmentData exists) -->
+                    <div id="drt-patient-display" style="display: none;">
+                        <div class="drt-section-title">Patient Info</div>
+                        <div class="drt-patient-info" id="drt-patient-info-text">
+                            Recording for: John Doe
+                        </div>
                     </div>
-                    <div class="drt-form-row drt-form-row-split">
-                        <input type="number" id="drt-patient-age" class="drt-input drt-input-small" placeholder="Age" min="0" max="150" />
-                        <select id="drt-patient-gender" class="drt-input">
-                            <option value="" disabled selected>Gender</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                        </select>
+
+                    <!-- Full patient form (shown when no appointmentData) -->
+                    <div id="drt-patient-form-section">
+                        <div class="drt-section-title">Patient Info</div>
+                        <div class="drt-form-row">
+                            <input type="text" id="drt-patient-name" class="drt-input" placeholder="Patient Name" />
+                        </div>
+                        <div class="drt-form-row drt-form-row-split">
+                            <input type="number" id="drt-patient-age" class="drt-input drt-input-small" placeholder="Age" min="0" max="150" />
+                            <select id="drt-patient-gender" class="drt-input">
+                                <option value="" disabled selected>Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <!-- Session controls (shared between both modes) -->
                     <div class="drt-form-row drt-form-actions" id="drt-session-actions">
                         <button id="drt-start-btn" class="drt-btn drt-btn-start">Start Session</button>
                         <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>Stop</button>
@@ -288,6 +301,35 @@
 
         document.body.appendChild(panel);
         setupPanelBehavior();
+        updatePatientDisplay();
+    }
+
+    /**
+     * Update patient display based on appointmentData availability
+     * Shows compact display if appointmentData exists, otherwise shows full form
+     */
+    function updatePatientDisplay() {
+        const displayEl = document.getElementById('drt-patient-display');
+        const formEl = document.getElementById('drt-patient-form-section');
+        const infoTextEl = document.getElementById('drt-patient-info-text');
+
+        if (!displayEl || !formEl) return;
+
+        if (appointmentData && appointmentData.patientName) {
+            // Show compact display with patient info
+            displayEl.style.display = 'block';
+            formEl.style.display = 'none';
+
+            const age = appointmentData.patientAge ? `, ${appointmentData.patientAge}` : '';
+            const gender = appointmentData.patientGender ? `, ${appointmentData.patientGender}` : '';
+            if (infoTextEl) {
+                infoTextEl.textContent = `Recording for: ${appointmentData.patientName}${age}${gender}`;
+            }
+        } else {
+            // Show full form for manual entry
+            displayEl.style.display = 'none';
+            formEl.style.display = 'block';
+        }
     }
 
     function setupPanelBehavior() {
@@ -345,25 +387,47 @@
 
         // ─── Start Session ─────────────────────────────────
         startBtn.addEventListener('click', () => {
-            const nameInput = document.getElementById('drt-patient-name');
-            const ageInput = document.getElementById('drt-patient-age');
-            const genderInput = document.getElementById('drt-patient-gender');
+            let name, age, gender;
+            let appointmentId = null;
+            let history = null;
 
-            const name = nameInput.value.trim();
-            const age = parseInt(ageInput.value);
-            const gender = genderInput.value;
+            // Use appointmentData if available, otherwise validate manual form
+            if (appointmentData && appointmentData.patientName) {
+                // EMR mode: use received appointment data
+                name = appointmentData.patientName;
+                age = appointmentData.patientAge || 0;
+                gender = appointmentData.patientGender || '';
+                appointmentId = appointmentData.appointmentId || null;
+                history = appointmentData.history || null;
+            } else {
+                // Manual mode: validate form inputs
+                const nameInput = document.getElementById('drt-patient-name');
+                const ageInput = document.getElementById('drt-patient-age');
+                const genderInput = document.getElementById('drt-patient-gender');
 
-            if (!name) { nameInput.focus(); return alert('Please enter patient name'); }
-            if (!age || age < 0 || age > 150) { ageInput.focus(); return alert('Please enter a valid age'); }
-            if (!gender) { genderInput.focus(); return alert('Please select gender'); }
+                name = nameInput.value.trim();
+                age = parseInt(ageInput.value);
+                gender = genderInput.value;
+
+                if (!name) { nameInput.focus(); return alert('Please enter patient name'); }
+                if (!age || age < 0 || age > 150) { ageInput.focus(); return alert('Please enter a valid age'); }
+                if (!gender) { genderInput.focus(); return alert('Please select gender'); }
+            }
 
             currentPatient = { name, age, gender };
             setStatus('Connecting...', 'connecting');
 
-            chrome.runtime.sendMessage({
+            // Build message payload
+            const payload = {
                 type: 'start-session',
                 patient: { name, age, gender }
-            }, (response) => {
+            };
+
+            // Include appointmentId and history if available
+            if (appointmentId) payload.appointmentId = appointmentId;
+            if (history) payload.history = history;
+
+            chrome.runtime.sendMessage(payload, (response) => {
                 if (chrome.runtime.lastError) {
                     setStatus('Error', 'error');
                     alert('Extension error: ' + chrome.runtime.lastError.message);
@@ -693,32 +757,14 @@
         // Store appointment data for export
         appointmentData = data;
 
-        // Auto-populate patient form if panel is already open
+        // Open panel if not already open, then update display
         const panel = document.getElementById('drt-panel');
-        if (panel && sessionPhase === 'pre') {
-            const nameInput = document.getElementById('drt-patient-name');
-            const ageInput = document.getElementById('drt-patient-age');
-            const genderInput = document.getElementById('drt-patient-gender');
-
-            if (nameInput && data.patientName) nameInput.value = data.patientName;
-            if (ageInput && data.patientAge) ageInput.value = data.patientAge;
-            if (genderInput && data.patientGender) genderInput.value = data.patientGender;
-
-            console.log('[drT Broadcast] Patient form auto-populated');
-        }
-
-        // If panel not open yet, open it and populate after a brief delay
         if (!panel) {
             injectPanel();
-            setTimeout(() => {
-                const nameInput = document.getElementById('drt-patient-name');
-                const ageInput = document.getElementById('drt-patient-age');
-                const genderInput = document.getElementById('drt-patient-gender');
-
-                if (nameInput && data.patientName) nameInput.value = data.patientName;
-                if (ageInput && data.patientAge) ageInput.value = data.patientAge;
-                if (genderInput && data.patientGender) genderInput.value = data.patientGender;
-            }, 100);
+            // updatePatientDisplay is called at end of injectPanel
+        } else {
+            // Panel already open, update display
+            updatePatientDisplay();
         }
     }
 
