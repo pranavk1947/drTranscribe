@@ -53,8 +53,7 @@
     let isPaused = false;
     let currentPatient = { name: '', age: '', gender: '' };
     let latestExtraction = {};
-    let appointmentData = null;      // Store received appointment/patient data
-    let broadcastChannel = null;     // Broadcast Channel for EMR communication
+    let appointmentData = null;      // Store received appointment/patient data (via postMessage)
 
     // ─── Mic Capture State ──────────────────────────────────────
 
@@ -772,60 +771,54 @@
         return false;
     });
 
-    // ─── Broadcast Channel for EMR Integration ────────────────────
+    // ─── Cross-Tab Communication via postMessage ────────────────────
 
     /**
-     * Initialize Broadcast Channel for cross-tab communication with EMR page
+     * Initialize message listener for cross-tab communication with EMR page
      */
-    function initBroadcastChannel() {
-        try {
-            broadcastChannel = new BroadcastChannel('drTranscribe-channel');
-
-            broadcastChannel.onmessage = (event) => {
-                const { type } = event.data;
-
-                switch (type) {
-                    case 'patient-data-response':
-                        handlePatientDataResponse(event.data);
-                        break;
-
-                    default:
-                        console.log('[drT Broadcast] Unknown message type:', type);
-                }
-            };
-
-            console.log('[drT Broadcast] Channel initialized');
-        } catch (err) {
-            console.warn('[drT Broadcast] Failed to initialize:', err.message);
-        }
+    function initMessageListener() {
+        window.addEventListener('message', (event) => {
+            // Verify message is from drTranscribe EMR
+            if (event.data && event.data.source === 'drTranscribe-EMR') {
+                console.log('[drT PostMessage] Received from EMR:', event.data);
+                handlePatientDataResponse(event.data);
+            }
+        });
+        console.log('[drT PostMessage] Listener initialized');
     }
 
     /**
-     * Request patient data from EMR page via Broadcast Channel
+     * Request patient data from EMR page via window.opener
      * Called when user clicks badge for the first time
      * Returns a promise that resolves when data is received or times out
      */
     async function requestPatientDataFromEMR() {
-        if (!broadcastChannel) {
-            console.log('[drT Broadcast] Channel not initialized, skipping EMR request');
+        if (!window.opener || window.opener.closed) {
+            console.log('[drT PostMessage] No opener window available, skipping EMR request');
             return;
         }
 
-        console.log('[drT Broadcast] Requesting patient data from EMR...');
+        console.log('[drT PostMessage] Requesting patient data from EMR...');
 
-        // Send request
-        broadcastChannel.postMessage({
-            type: 'request-patient-data',
-            timestamp: new Date().toISOString()
-        });
+        // Send request to opener (EMR demo page)
+        try {
+            window.opener.postMessage({
+                type: 'request-patient-data',
+                source: 'drTranscribe-Extension',
+                timestamp: new Date().toISOString()
+            }, '*'); // Allow any origin for now
+        } catch (err) {
+            console.warn('[drT PostMessage] Failed to send request:', err.message);
+            return;
+        }
 
         // Wait for response with timeout (2 seconds)
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         if (appointmentData) {
-            console.log('[drT Broadcast] Patient data received from EMR');
+            console.log('[drT PostMessage] Patient data received from EMR');
         } else {
-            console.log('[drT Broadcast] No patient data received (timeout or no EMR page)');
+            console.log('[drT PostMessage] No patient data received (timeout or no EMR page)');
         }
     }
 
@@ -834,7 +827,7 @@
      * Stores appointmentData for use in session and export
      */
     function handlePatientDataResponse(data) {
-        console.log('[drT Broadcast] Patient data received:', data);
+        console.log('[drT PostMessage] Patient data received:', data);
 
         // Store appointment data for use in session and export
         appointmentData = data;
@@ -852,34 +845,33 @@
      * Called after session ends and user clicks export
      */
     function exportToEMR(extraction) {
-        if (!broadcastChannel) {
-            console.warn('[drT Broadcast] Channel not initialized');
+        if (!window.opener || window.opener.closed) {
+            console.warn('[drT PostMessage] Opener window not available');
             return false;
         }
 
         if (!appointmentData) {
-            console.warn('[drT Broadcast] No appointment data available');
+            console.warn('[drT PostMessage] No appointment data available');
             return false;
         }
 
         try {
-            broadcastChannel.postMessage({
+            window.opener.postMessage({
                 type: 'export-to-emr',
-                data: {
-                    appointmentId: appointmentData.appointmentId,
-                    extraction: extraction
-                }
-            });
+                source: 'drTranscribe-Extension',
+                appointmentId: appointmentData.appointmentId,
+                extractedData: extraction
+            }, '*');
 
-            console.log('[drT Broadcast] Results sent to EMR page');
+            console.log('[drT PostMessage] Results sent to EMR page');
             return true;
         } catch (err) {
-            console.error('[drT Broadcast] Failed to send results:', err);
+            console.error('[drT PostMessage] Failed to send results:', err);
             return false;
         }
     }
 
-    // Initialize Broadcast Channel immediately when content script loads
-    // This ensures the listener is ready before EMR demo broadcasts messages
-    initBroadcastChannel();
+    // Initialize message listener immediately when content script loads
+    // This ensures the listener is ready to receive messages from EMR demo
+    initMessageListener();
 })();

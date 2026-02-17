@@ -147,11 +147,10 @@
     </div>
 
     <script>
-        // Broadcast Channel for cross-tab communication
-        const CHANNEL_NAME = 'drTranscribe-channel';
-        let broadcastChannel = null;
+        // Cross-tab communication using window.postMessage
+        let gmeetWindow = null; // Reference to opened GMeet window
         let currentAppointmentId = null;
-        let currentPatientData = null; // Store current appointment data for pull requests
+        let currentPatientData = null; // Store current appointment data for requests
 
         // DOM Elements
         const consultForm = document.getElementById('consultForm');
@@ -162,29 +161,22 @@
         const resultsSection = document.getElementById('resultsSection');
         const debugLog = document.getElementById('debugLog');
 
-        // Initialize Broadcast Channel
-        function initBroadcastChannel() {
-            try {
-                broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
-
-                broadcastChannel.onmessage = (event) => {
-                    logDebug('Received message:', event.data);
-                    handleIncomingMessage(event.data);
-                };
-
-                broadcastChannel.onmessageerror = (error) => {
-                    logDebug('Message error:', error, 'error');
-                };
-
-                logDebug('Broadcast Channel initialized: ' + CHANNEL_NAME, 'success');
-            } catch (error) {
-                logDebug('Failed to initialize Broadcast Channel: ' + error.message, 'error');
-            }
+        // Initialize message listener for cross-tab communication
+        function initMessageListener() {
+            window.addEventListener('message', (event) => {
+                // Security: verify origin if needed (for now, accept all)
+                logDebug('Received postMessage:', event.data);
+                handleIncomingMessage(event.data);
+            });
+            logDebug('Message listener initialized', 'success');
         }
 
         // Handle incoming messages from extension
         function handleIncomingMessage(data) {
             if (!data || !data.type) return;
+
+            // Verify message is from drTranscribe extension
+            if (data.source !== 'drTranscribe-Extension') return;
 
             if (data.type === 'export-to-emr') {
                 logDebug('Received export-to-emr message', 'success');
@@ -204,13 +196,19 @@
                 return;
             }
 
-            // Send patient data response
+            if (!gmeetWindow || gmeetWindow.closed) {
+                logDebug('GMeet window not available', 'error');
+                return;
+            }
+
+            // Send patient data response via postMessage
             try {
-                broadcastChannel.postMessage({
+                gmeetWindow.postMessage({
                     type: 'patient-data-response',
+                    source: 'drTranscribe-EMR',
                     ...currentPatientData
-                });
-                logDebug('Sent patient-data-response:', currentPatientData, 'success');
+                }, 'https://meet.google.com');
+                logDebug('Sent patient-data-response via postMessage:', currentPatientData, 'success');
             } catch (error) {
                 logDebug('Failed to send patient data: ' + error.message, 'error');
             }
@@ -290,19 +288,9 @@
                 timestamp: new Date().toISOString()
             };
 
-            // Initialize Broadcast Channel if needed
-            if (!broadcastChannel) {
-                initBroadcastChannel();
-                if (!broadcastChannel) {
-                    showStatus('Failed to initialize communication channel. Please refresh the page.', 'error');
-                    disableForm(false);
-                    return;
-                }
-            }
-
-            // Open Google Meet immediately (no broadcast - extension will pull data on badge click)
-            const newWindow = window.open(gmeetLink, '_blank');
-            if (!newWindow || newWindow.closed) {
+            // Open Google Meet and store window reference
+            gmeetWindow = window.open(gmeetLink, '_blank');
+            if (!gmeetWindow || gmeetWindow.closed) {
                 showStatus('Please allow popups for this site to open Google Meet', 'error');
                 logDebug('Popup blocked - user needs to allow popups', 'error');
                 return;
@@ -384,17 +372,9 @@
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
-            initBroadcastChannel();
+            initMessageListener();
             logDebug('EMR Demo page loaded', 'success');
             logDebug('Waiting for start-consult actions...');
-        });
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (broadcastChannel) {
-                broadcastChannel.close();
-                logDebug('Broadcast Channel closed');
-            }
         });
     </script>
 </body>
