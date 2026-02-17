@@ -3,6 +3,7 @@ from typing import Dict, Type, Optional
 from ..providers.base import ExtractionProvider
 from ..providers.extraction.openai_gpt import OpenAIGPTProvider
 from ..providers.extraction.azure_gpt import AzureGPTProvider
+from ..providers.extraction.claude_gpt import ClaudeGPTProvider
 from ..providers.extraction.mock_gpt import MockGPTProvider
 from ..models.patient import Patient
 from ..models.extraction import ExtractionResult
@@ -17,6 +18,7 @@ class ExtractionService:
     PROVIDERS: Dict[str, Type[ExtractionProvider]] = {
         "openai": OpenAIGPTProvider,
         "azure": AzureGPTProvider,
+        "claude": ClaudeGPTProvider,
         "mock": MockGPTProvider,
     }
 
@@ -50,6 +52,15 @@ class ExtractionService:
                 endpoint=self.settings.azure_openai.endpoint,
                 deployment=self.settings.azure_openai.gpt_deployment,
                 api_version=self.settings.azure_openai.api_version,
+                temperature=self.settings.extraction.temperature
+            )
+
+        elif provider_name == "claude":
+            if not self.settings.claude:
+                raise ValueError("Claude configuration not found")
+            return provider_class(
+                api_key=self.settings.claude.api_key,
+                model=self.settings.extraction.model,
                 temperature=self.settings.extraction.temperature
             )
 

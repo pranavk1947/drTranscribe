@@ -45,6 +45,11 @@ class GeminiConfig(BaseModel):
     api_key: str
 
 
+class ClaudeConfig(BaseModel):
+    """Claude (Anthropic) API configuration."""
+    api_key: str
+
+
 class ServerConfig(BaseModel):
     """Server configuration."""
     host: str = "0.0.0.0"
@@ -64,6 +69,7 @@ class Settings(BaseModel):
     extraction: ExtractionConfig
     openai: Optional[OpenAIConfig] = None
     azure_openai: Optional[AzureOpenAIConfig] = None
+    claude: Optional[ClaudeConfig] = None
     groq: Optional[GroqConfig] = None
     gemini: Optional[GeminiConfig] = None
     server: ServerConfig
