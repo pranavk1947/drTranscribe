@@ -4,6 +4,7 @@ from ..providers.base import ExtractionProvider
 from ..providers.extraction.openai_gpt import OpenAIGPTProvider
 from ..providers.extraction.azure_gpt import AzureGPTProvider
 from ..providers.extraction.claude_gpt import ClaudeGPTProvider
+from ..providers.extraction.gemini_gpt import GeminiGPTProvider
 from ..providers.extraction.mock_gpt import MockGPTProvider
 from ..models.patient import Patient
 from ..models.extraction import ExtractionResult
@@ -19,6 +20,7 @@ class ExtractionService:
         "openai": OpenAIGPTProvider,
         "azure": AzureGPTProvider,
         "claude": ClaudeGPTProvider,
+        "gemini": GeminiGPTProvider,
         "mock": MockGPTProvider,
     }
 
@@ -60,6 +62,15 @@ class ExtractionService:
                 raise ValueError("Claude configuration not found")
             return provider_class(
                 api_key=self.settings.claude.api_key,
+                model=self.settings.extraction.model,
+                temperature=self.settings.extraction.temperature
+            )
+
+        elif provider_name == "gemini":
+            if not self.settings.gemini:
+                raise ValueError("Gemini configuration not found")
+            return provider_class(
+                api_key=self.settings.gemini.api_key,
                 model=self.settings.extraction.model,
                 temperature=self.settings.extraction.temperature
             )

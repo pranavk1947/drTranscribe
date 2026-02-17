@@ -4,8 +4,8 @@ transcription:
   output_format: "wav"          # Format to send to provider: "wav" or "webm"
 
 extraction:
-  provider: "claude"
-  model: "claude-3-5-sonnet-20240620"
+  provider: "gemini"
+  model: "gemini-2.0-flash-exp"
   temperature: 0.3
 
 # OpenAI Configuration
