@@ -50,6 +50,7 @@
 
     let sessionPhase = 'pre'; // 'pre' | 'recording' | 'post'
     let isCollapsed = false;
+    let isPaused = false;
     let currentPatient = { name: '', age: '', gender: '' };
     let latestExtraction = {};
     let appointmentData = null;      // Store received appointment/patient data
@@ -270,7 +271,8 @@
                     <!-- Session controls (shared between both modes) -->
                     <div class="drt-form-row drt-form-actions" id="drt-session-actions">
                         <button id="drt-start-btn" class="drt-btn drt-btn-start">Start Session</button>
-                        <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>Stop</button>
+                        <button id="drt-pause-btn" class="drt-btn drt-btn-pause" style="display: none;">Pause</button>
+                        <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>End Session</button>
                     </div>
                 </div>
 
@@ -340,6 +342,7 @@
         const collapseBtn = document.getElementById('drt-collapse');
         const closeBtn = document.getElementById('drt-close');
         const startBtn = document.getElementById('drt-start-btn');
+        const pauseBtn = document.getElementById('drt-pause-btn');
         const stopBtn = document.getElementById('drt-stop-btn');
 
         // ─── Dragging ──────────────────────────────────────
@@ -443,6 +446,23 @@
             });
         });
 
+        // ─── Pause / Resume ────────────────────────────────
+        pauseBtn.addEventListener('click', () => {
+            if (isPaused) {
+                // Resume
+                isPaused = false;
+                pauseBtn.textContent = 'Pause';
+                setStatus('Recording', 'recording');
+                startMicCapture();
+            } else {
+                // Pause
+                isPaused = true;
+                pauseBtn.textContent = 'Resume';
+                setStatus('Paused', '');
+                stopMicCapture();
+            }
+        });
+
         // ─── Stop Session ──────────────────────────────────
         stopBtn.addEventListener('click', () => {
             doStopSession();
@@ -468,12 +488,20 @@
 
     function setSessionActive(active) {
         const startBtn = document.getElementById('drt-start-btn');
+        const pauseBtn = document.getElementById('drt-pause-btn');
         const stopBtn = document.getElementById('drt-stop-btn');
         const nameInput = document.getElementById('drt-patient-name');
         const ageInput = document.getElementById('drt-patient-age');
         const genderInput = document.getElementById('drt-patient-gender');
 
-        if (startBtn) startBtn.disabled = active;
+        if (startBtn) {
+            startBtn.disabled = active;
+            startBtn.style.display = active ? 'none' : '';
+        }
+        if (pauseBtn) {
+            pauseBtn.style.display = active ? '' : 'none';
+            pauseBtn.disabled = false;
+        }
         if (stopBtn) stopBtn.disabled = !active;
         if (nameInput) nameInput.disabled = active;
         if (ageInput) ageInput.disabled = active;
@@ -686,6 +714,7 @@
         switch (message.type) {
             case 'session-started':
                 sessionPhase = 'recording';
+                isPaused = false;
                 setSessionActive(true);
                 setStatus('Recording', 'recording');
                 resetResults();
