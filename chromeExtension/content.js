@@ -52,6 +52,8 @@
     let isCollapsed = false;
     let currentPatient = { name: '', age: '', gender: '' };
     let latestExtraction = {};
+    let appointmentData = null;      // Store received appointment/patient data
+    let broadcastChannel = null;     // Broadcast Channel for EMR communication
 
     // ─── Mic Capture State ──────────────────────────────────────
 
@@ -652,4 +654,109 @@
         }
         return false;
     });
+
+    // ─── Broadcast Channel for EMR Integration ────────────────────
+
+    /**
+     * Initialize Broadcast Channel for cross-tab communication with EMR page
+     */
+    function initBroadcastChannel() {
+        try {
+            broadcastChannel = new BroadcastChannel('drTranscribe-channel');
+
+            broadcastChannel.onmessage = (event) => {
+                const { type, data } = event.data;
+
+                switch (type) {
+                    case 'start-consult':
+                        handleStartConsultBroadcast(data);
+                        break;
+
+                    default:
+                        console.log('[drT Broadcast] Unknown message type:', type);
+                }
+            };
+
+            console.log('[drT Broadcast] Channel initialized');
+        } catch (err) {
+            console.warn('[drT Broadcast] Failed to initialize:', err.message);
+        }
+    }
+
+    /**
+     * Handle start-consult message from EMR page
+     * Stores appointmentData for later use in exportToEMR
+     */
+    function handleStartConsultBroadcast(data) {
+        console.log('[drT Broadcast] Appointment data received:', data);
+
+        // Store appointment data for export
+        appointmentData = data;
+
+        // Auto-populate patient form if panel is already open
+        const panel = document.getElementById('drt-panel');
+        if (panel && sessionPhase === 'pre') {
+            const nameInput = document.getElementById('drt-patient-name');
+            const ageInput = document.getElementById('drt-patient-age');
+            const genderInput = document.getElementById('drt-patient-gender');
+
+            if (nameInput && data.patientName) nameInput.value = data.patientName;
+            if (ageInput && data.patientAge) ageInput.value = data.patientAge;
+            if (genderInput && data.patientGender) genderInput.value = data.patientGender;
+
+            console.log('[drT Broadcast] Patient form auto-populated');
+        }
+
+        // If panel not open yet, open it and populate after a brief delay
+        if (!panel) {
+            injectPanel();
+            setTimeout(() => {
+                const nameInput = document.getElementById('drt-patient-name');
+                const ageInput = document.getElementById('drt-patient-age');
+                const genderInput = document.getElementById('drt-patient-gender');
+
+                if (nameInput && data.patientName) nameInput.value = data.patientName;
+                if (ageInput && data.patientAge) ageInput.value = data.patientAge;
+                if (genderInput && data.patientGender) genderInput.value = data.patientGender;
+            }, 100);
+        }
+    }
+
+    /**
+     * Export extraction results back to EMR page via Broadcast Channel
+     * Called after session ends and user clicks export
+     */
+    function exportToEMR(extraction) {
+        if (!broadcastChannel) {
+            console.warn('[drT Broadcast] Channel not initialized');
+            return false;
+        }
+
+        if (!appointmentData) {
+            console.warn('[drT Broadcast] No appointment data available');
+            return false;
+        }
+
+        try {
+            broadcastChannel.postMessage({
+                type: 'consult-complete',
+                data: {
+                    appointmentId: appointmentData.appointmentId,
+                    extraction: extraction
+                }
+            });
+
+            console.log('[drT Broadcast] Results sent to EMR page');
+            return true;
+        } catch (err) {
+            console.error('[drT Broadcast] Failed to send results:', err);
+            return false;
+        }
+    }
+
+    // Initialize Broadcast Channel on script load
+    // 3-second timeout to handle race condition with EMR page
+    setTimeout(() => {
+        initBroadcastChannel();
+    }, 3000);
 })();
