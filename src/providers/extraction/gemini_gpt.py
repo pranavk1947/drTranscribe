@@ -51,7 +51,7 @@ Return ONLY valid JSON with all 5 fields."""
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-2.0-flash-exp",
+        model: str = "gemini-1.5-flash",
         temperature: float = 0.3
     ):
         genai.configure(api_key=api_key)
