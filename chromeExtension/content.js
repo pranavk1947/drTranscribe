@@ -315,15 +315,16 @@
 
         if (!displayEl || !formEl) return;
 
-        if (appointmentData && appointmentData.patientName) {
+        if (appointmentData && appointmentData.patient) {
             // Show compact display with patient info
             displayEl.style.display = 'block';
             formEl.style.display = 'none';
 
-            const age = appointmentData.patientAge ? `, ${appointmentData.patientAge}` : '';
-            const gender = appointmentData.patientGender ? `, ${appointmentData.patientGender}` : '';
+            const { name, age, gender } = appointmentData.patient;
+            const ageStr = age ? `, ${age}` : '';
+            const genderStr = gender ? `, ${gender}` : '';
             if (infoTextEl) {
-                infoTextEl.textContent = `Recording for: ${appointmentData.patientName}${age}${gender}`;
+                infoTextEl.textContent = `Recording for: ${name}${ageStr}${genderStr}`;
             }
         } else {
             // Show full form for manual entry
@@ -392,13 +393,13 @@
             let history = null;
 
             // Use appointmentData if available, otherwise validate manual form
-            if (appointmentData && appointmentData.patientName) {
+            if (appointmentData && appointmentData.patient) {
                 // EMR mode: use received appointment data
-                name = appointmentData.patientName;
-                age = appointmentData.patientAge || 0;
-                gender = appointmentData.patientGender || '';
+                name = appointmentData.patient.name;
+                age = appointmentData.patient.age || 0;
+                gender = appointmentData.patient.gender || '';
                 appointmentId = appointmentData.appointmentId || null;
-                history = appointmentData.history || null;
+                history = appointmentData.patient.history || null;
             } else {
                 // Manual mode: validate form inputs
                 const nameInput = document.getElementById('drt-patient-name');
