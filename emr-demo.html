@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMR Demo - drTranscribe Integration Test</title>
+    <link rel="stylesheet" href="emr-demo.css">
+</head>
+<body>
+    <div class="emr-container">
+        <header class="emr-header">
+            <h1 class="emr-title">EMR System Demo</h1>
+            <p class="emr-subtitle">Test drTranscribe Broadcast Channel Integration</p>
+        </header>
+
+        <div class="emr-content">
+            <!-- Appointment Form Section -->
+            <section class="emr-section">
+                <h2 class="section-title">Start New Consultation</h2>
+
+                <form id="consultForm" class="emr-form">
+                    <div class="form-row">
+                        <label for="appointmentId" class="form-label">Appointment ID <span class="required">*</span></label>
+                        <input
+                            type="text"
+                            id="appointmentId"
+                            class="form-input"
+                            placeholder="e.g., APT-2024-001"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-row form-row-split">
+                        <div class="form-group">
+                            <label for="patientName" class="form-label">Patient Name <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="patientName"
+                                class="form-input"
+                                placeholder="Full name"
+                                required
+                            >
+                        </div>
+                        <div class="form-group form-group-small">
+                            <label for="age" class="form-label">Age <span class="required">*</span></label>
+                            <input
+                                type="number"
+                                id="age"
+                                class="form-input"
+                                placeholder="Years"
+                                min="0"
+                                max="150"
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="gender" class="form-label">Gender <span class="required">*</span></label>
+                        <select id="gender" class="form-input" required>
+                            <option value="">Select gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="patientHistory" class="form-label">Patient History</label>
+                        <textarea
+                            id="patientHistory"
+                            class="form-textarea"
+                            placeholder="Enter patient medical history, previous conditions, medications, allergies, etc."
+                            rows="6"
+                        ></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="gmeetLink" class="form-label">Google Meet Link <span class="required">*</span></label>
+                        <input
+                            type="url"
+                            id="gmeetLink"
+                            class="form-input"
+                            placeholder="https://meet.google.com/xxx-xxxx-xxx"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="startConsultBtn">
+                            Start Consult
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="clearFormBtn">
+                            Clear Form
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Status Message -->
+                <div id="statusMessage" class="status-message" style="display: none;"></div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="emr-section" id="resultsSection" style="display: none;">
+                <h2 class="section-title">Received Extraction Results</h2>
+
+                <div class="results-container">
+                    <div class="result-card">
+                        <h3 class="result-title">Chief Complaint</h3>
+                        <div id="chiefComplaint" class="result-content">Waiting for data...</div>
+                    </div>
+
+                    <div class="result-card">
+                        <h3 class="result-title">Diagnosis</h3>
+                        <div id="diagnosis" class="result-content">Waiting for data...</div>
+                    </div>
+
+                    <div class="result-card">
+                        <h3 class="result-title">Medicine</h3>
+                        <div id="medicine" class="result-content">Waiting for data...</div>
+                    </div>
+
+                    <div class="result-card">
+                        <h3 class="result-title">Advice</h3>
+                        <div id="advice" class="result-content">Waiting for data...</div>
+                    </div>
+
+                    <div class="result-card">
+                        <h3 class="result-title">Next Steps</h3>
+                        <div id="nextSteps" class="result-content">Waiting for data...</div>
+                    </div>
+                </div>
+
+                <div class="results-actions">
+                    <button type="button" class="btn btn-secondary" id="newConsultBtn">
+                        Start New Consult
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <!-- Debug Log -->
+        <section class="debug-section">
+            <h3 class="debug-title">Debug Log</h3>
+            <div id="debugLog" class="debug-log"></div>
+        </section>
+    </div>
+
+    <script>
+        // Broadcast Channel for cross-tab communication
+        const CHANNEL_NAME = 'drTranscribe-channel';
+        let broadcastChannel = null;
+        let currentAppointmentId = null;
+
+        // DOM Elements
+        const consultForm = document.getElementById('consultForm');
+        const startConsultBtn = document.getElementById('startConsultBtn');
+        const clearFormBtn = document.getElementById('clearFormBtn');
+        const newConsultBtn = document.getElementById('newConsultBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultsSection = document.getElementById('resultsSection');
+        const debugLog = document.getElementById('debugLog');
+
+        // Initialize Broadcast Channel
+        function initBroadcastChannel() {
+            try {
+                broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
+
+                broadcastChannel.onmessage = (event) => {
+                    logDebug('Received message:', event.data);
+                    handleIncomingMessage(event.data);
+                };
+
+                broadcastChannel.onmessageerror = (error) => {
+                    logDebug('Message error:', error, 'error');
+                };
+
+                logDebug('Broadcast Channel initialized: ' + CHANNEL_NAME, 'success');
+            } catch (error) {
+                logDebug('Failed to initialize Broadcast Channel: ' + error.message, 'error');
+            }
+        }
+
+        // Handle incoming messages from extension
+        function handleIncomingMessage(data) {
+            if (!data || !data.type) return;
+
+            if (data.type === 'export-to-emr') {
+                logDebug('Received export-to-emr message', 'success');
+                displayExtractionResults(data);
+            } else {
+                logDebug('Unknown message type: ' + data.type, 'warning');
+            }
+        }
+
+        // Display extraction results
+        function displayExtractionResults(data) {
+            const { appointmentId, extractedData } = data;
+
+            if (!extractedData) {
+                logDebug('No extracted data in message', 'error');
+                return;
+            }
+
+            // Update result cards
+            document.getElementById('chiefComplaint').textContent =
+                extractedData.chief_complaint || 'Not provided';
+            document.getElementById('diagnosis').textContent =
+                extractedData.diagnosis || 'Not provided';
+            document.getElementById('medicine').textContent =
+                extractedData.medicine || 'Not provided';
+            document.getElementById('advice').textContent =
+                extractedData.advice || 'Not provided';
+            document.getElementById('nextSteps').textContent =
+                extractedData.next_steps || 'Not provided';
+
+            // Show results section
+            resultsSection.style.display = 'block';
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            showStatus('Successfully received extraction results for ' + appointmentId, 'success');
+        }
+
+        // Form submission handler
+        consultForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            // Get form values
+            const appointmentId = document.getElementById('appointmentId').value.trim();
+            const patientName = document.getElementById('patientName').value.trim();
+            const age = document.getElementById('age').value.trim();
+            const gender = document.getElementById('gender').value;
+            const patientHistory = document.getElementById('patientHistory').value.trim();
+            const gmeetLink = document.getElementById('gmeetLink').value.trim();
+
+            // Validate required fields
+            if (!appointmentId || !patientName || !age || !gender || !gmeetLink) {
+                showStatus('Please fill in all required fields', 'error');
+                return;
+            }
+
+            // Validate Google Meet URL
+            if (!gmeetLink.includes('meet.google.com')) {
+                showStatus('Please enter a valid Google Meet link', 'error');
+                return;
+            }
+
+            currentAppointmentId = appointmentId;
+
+            // Create start-consult message
+            const message = {
+                type: 'start-consult',
+                appointmentId: appointmentId,
+                patient: {
+                    name: patientName,
+                    age: parseInt(age),
+                    gender: gender,
+                    history: patientHistory
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            // Send via Broadcast Channel
+            try {
+                if (!broadcastChannel) {
+                    initBroadcastChannel();
+                }
+
+                broadcastChannel.postMessage(message);
+                logDebug('Sent start-consult message:', message, 'success');
+
+                showStatus('Consult started - GMeet opened. Waiting for extraction results...', 'success');
+
+                // Open Google Meet in new tab
+                setTimeout(() => {
+                    const newWindow = window.open(gmeetLink, '_blank');
+                    if (!newWindow) {
+                        showStatus('Please allow popups to open Google Meet', 'warning');
+                        logDebug('Popup blocked - user needs to allow popups', 'warning');
+                    } else {
+                        logDebug('Opened Google Meet in new tab', 'success');
+                    }
+                }, 500);
+
+                // Disable form during session
+                disableForm(true);
+
+            } catch (error) {
+                logDebug('Failed to send message: ' + error.message, 'error');
+                showStatus('Failed to start consultation: ' + error.message, 'error');
+            }
+        });
+
+        // Clear form button
+        clearFormBtn.addEventListener('click', () => {
+            consultForm.reset();
+            showStatus('Form cleared', 'info');
+            logDebug('Form cleared by user');
+        });
+
+        // New consult button
+        newConsultBtn.addEventListener('click', () => {
+            consultForm.reset();
+            resultsSection.style.display = 'none';
+            disableForm(false);
+            currentAppointmentId = null;
+            showStatus('Ready for new consultation', 'info');
+            logDebug('Starting new consultation session');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // Enable/disable form
+        function disableForm(disabled) {
+            const inputs = consultForm.querySelectorAll('input, select, textarea, button');
+            inputs.forEach(input => {
+                input.disabled = disabled;
+            });
+            clearFormBtn.disabled = disabled;
+        }
+
+        // Show status message
+        function showStatus(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = 'status-message status-' + type;
+            statusMessage.style.display = 'block';
+
+            // Auto-hide after 5 seconds for success/info messages
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Debug logging
+        function logDebug(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'debug-entry debug-' + type;
+
+            let logContent = `[${timestamp}] `;
+            if (typeof message === 'object') {
+                logContent += JSON.stringify(message, null, 2);
+            } else {
+                logContent += message;
+            }
+
+            logEntry.textContent = logContent;
+            debugLog.appendChild(logEntry);
+
+            // Auto-scroll to latest entry
+            debugLog.scrollTop = debugLog.scrollHeight;
+
+            // Keep only last 50 entries
+            while (debugLog.children.length > 50) {
+                debugLog.removeChild(debugLog.firstChild);
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            initBroadcastChannel();
+            logDebug('EMR Demo page loaded', 'success');
+            logDebug('Waiting for start-consult actions...');
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (broadcastChannel) {
+                broadcastChannel.close();
+                logDebug('Broadcast Channel closed');
+            }
+        });
+    </script>
+</body>
+</html>
