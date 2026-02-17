@@ -5,7 +5,7 @@ transcription:
 
 extraction:
   provider: "gemini"
-  model: "gemini-1.5-flash"
+  model: "gemini-pro"
   temperature: 0.3
 
 # OpenAI Configuration

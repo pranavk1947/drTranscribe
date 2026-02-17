@@ -51,16 +51,17 @@ Return ONLY valid JSON with all 5 fields."""
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-1.5-flash",
+        model: str = "gemini-pro",
         temperature: float = 0.3
     ):
         genai.configure(api_key=api_key)
+
+        # gemini-pro doesn't support response_mime_type, use basic config
+        generation_config = {"temperature": temperature}
+
         self.model = genai.GenerativeModel(
             model_name=model,
-            generation_config={
-                "temperature": temperature,
-                "response_mime_type": "application/json"
-            }
+            generation_config=generation_config
         )
         self.model_name = model
         self.temperature = temperature
