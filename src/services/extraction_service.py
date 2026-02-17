@@ -5,6 +5,7 @@ from ..providers.extraction.openai_gpt import OpenAIGPTProvider
 from ..providers.extraction.azure_gpt import AzureGPTProvider
 from ..providers.extraction.claude_gpt import ClaudeGPTProvider
 from ..providers.extraction.gemini_gpt import GeminiGPTProvider
+from ..providers.extraction.groq_gpt import GroqGPTProvider
 from ..providers.extraction.mock_gpt import MockGPTProvider
 from ..models.patient import Patient
 from ..models.extraction import ExtractionResult
@@ -21,6 +22,7 @@ class ExtractionService:
         "azure": AzureGPTProvider,
         "claude": ClaudeGPTProvider,
         "gemini": GeminiGPTProvider,
+        "groq": GroqGPTProvider,
         "mock": MockGPTProvider,
     }
 
@@ -71,6 +73,15 @@ class ExtractionService:
                 raise ValueError("Gemini configuration not found")
             return provider_class(
                 api_key=self.settings.gemini.api_key,
+                model=self.settings.extraction.model,
+                temperature=self.settings.extraction.temperature
+            )
+
+        elif provider_name == "groq":
+            if not self.settings.groq:
+                raise ValueError("Groq configuration not found")
+            return provider_class(
+                api_key=self.settings.groq.api_key,
                 model=self.settings.extraction.model,
                 temperature=self.settings.extraction.temperature
             )

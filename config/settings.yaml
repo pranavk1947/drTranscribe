@@ -4,8 +4,8 @@ transcription:
   output_format: "wav"          # Format to send to provider: "wav" or "webm"
 
 extraction:
-  provider: "gemini"
-  model: "gemini-pro"
+  provider: "groq"
+  model: "llama-3.3-70b-versatile"
   temperature: 0.3
 
 # OpenAI Configuration
