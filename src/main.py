@@ -8,6 +8,7 @@ from .config.settings import load_settings
 from .services.transcription_service import TranscriptionService
 from .services.extraction_service import ExtractionService
 from .services.session_manager import SessionManager
+from .services.audio_storage import AudioStorageService
 from .websocket_handler import WebSocketHandler
 
 # Configure logging
@@ -15,7 +16,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/drTranscribe.log'),
+        logging.FileHandler('logs/medlog.log'),
         logging.StreamHandler()
     ]
 )
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 settings = load_settings()
 
 # Create FastAPI app
-app = FastAPI(title="drTranscribe MVP", version="1.0.0")
+app = FastAPI(title="MedLog", version="1.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -41,13 +42,15 @@ app.add_middleware(
 transcription_service = TranscriptionService(settings)
 extraction_service = ExtractionService(settings)
 session_manager = SessionManager()
+audio_storage_service = AudioStorageService(settings)
 
 # Initialize WebSocket handler
 ws_handler = WebSocketHandler(
     settings=settings,
     transcription_service=transcription_service,
     extraction_service=extraction_service,
-    session_manager=session_manager
+    session_manager=session_manager,
+    audio_storage_service=audio_storage_service
 )
 
 # Serve frontend static files (includes AudioWorklet processor, audio-recorder.js, wav-encoder.js)
@@ -98,7 +101,7 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     
-    logger.info("Starting drTranscribe MVP server")
+    logger.info("Starting MedLog server")
     logger.info(f"Transcription provider: {settings.transcription.provider}")
     logger.info(f"Extraction provider: {settings.extraction.provider}")
     

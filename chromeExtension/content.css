@@ -1,6 +1,6 @@
-/* drTranscribe - Meeting Overlay Panel + Badge
+/* MedLog - Meeting Overlay Panel + Badge
  * All classes prefixed drt- to avoid conflicts with Meet/Zoom CSS.
- * Dark theme to blend with meeting UIs.
+ * Dark theme to blend with meeting UIs with MedLog green branding.
  */
 
 /* ─── Floating Badge ────────────────────────────────────────── */
@@ -9,22 +9,27 @@
     position: fixed;
     bottom: 80px;  /* Changed from 24px */
     right: 24px;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: #1e1e2e;
-    border: 2px solid #313244;
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;  /* Rounded square instead of circle */
+    background: #3d5f5c;  /* MedLog dark teal */
+    border: none;  /* No border - let the logo stand out */
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
-    font-size: 12px;
-    font-weight: 700;
-    color: #89b4fa;
+    padding: 6px;
     cursor: pointer;
     z-index: 2147483646;
-    transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
+    transition: transform 0.15s, box-shadow 0.2s;
     user-select: none;
+    overflow: hidden;  /* Clip any content outside */
+}
+
+.drt-badge-logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;  /* Contain the full logo */
+    border-radius: 8px;  /* Slight rounding to match container */
 }
 
 .drt-badge:hover {
@@ -32,18 +37,17 @@
 }
 
 .drt-badge-detected {
-    box-shadow: 0 0 12px rgba(137, 180, 250, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .drt-badge-active {
-    border-color: #a6e3a1;
-    box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 16px rgba(197, 217, 82, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
     animation: drt-badge-pulse 2s ease-in-out infinite;
 }
 
 @keyframes drt-badge-pulse {
-    0%, 100% { box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(166, 227, 161, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3); }
+    0%, 100% { box-shadow: 0 0 16px rgba(197, 217, 82, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
+    50% { box-shadow: 0 0 24px rgba(197, 217, 82, 0.7), 0 2px 8px rgba(0, 0, 0, 0.3); }
 }
 
 /* ─── Panel ─────────────────────────────────────────────────── */
@@ -98,7 +102,7 @@
 .drt-logo {
     font-weight: 700;
     font-size: 16px;
-    color: #89b4fa;
+    color: #c5d952;  /* MedLog lime green */
     letter-spacing: -0.5px;
 }
 
@@ -116,8 +120,8 @@
 }
 
 .drt-status-recording {
-    color: #a6e3a1;
-    background: #273a27;
+    color: #c5d952;  /* MedLog lime green */
+    background: #2a3d3b;
     animation: drt-pulse 1.5s ease-in-out infinite;
 }
 
@@ -212,7 +216,8 @@
 }
 
 .drt-input:focus {
-    border-color: #89b4fa;
+    border-color: #c5d952;  /* MedLog lime green focus */
+    box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.1);
 }
 
 .drt-input:disabled {
@@ -255,12 +260,16 @@
 }
 
 .drt-btn-start {
-    background: #89b4fa;
+    background: #c5d952;  /* MedLog lime green */
     color: #1e1e2e;
+    font-weight: 600;
 }
 
 .drt-btn-start:hover:not(:disabled) {
-    background: #74a8fc;
+    background: #3d5f5c;  /* MedLog dark teal on hover */
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(61, 95, 92, 0.3);
 }
 
 .drt-btn-stop {
@@ -273,12 +282,14 @@
 }
 
 .drt-btn-pause {
-    background: #89b4fa;
+    background: #c5d952;  /* MedLog lime green */
     color: #1e1e2e;
+    font-weight: 600;
 }
 
 .drt-btn-pause:hover:not(:disabled) {
-    background: #74a8fc;
+    background: #3d5f5c;  /* MedLog dark teal on hover */
+    color: white;
 }
 
 /* ─── Result Cards ───────────────────────────────────────── */
@@ -299,6 +310,7 @@
 
 .drt-card:hover {
     border-color: #45475a;
+    background: #1e2a29;  /* Slightly green tint on hover */
 }
 
 .drt-card-title {
@@ -306,7 +318,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #89b4fa;
+    color: #c5d952;  /* MedLog lime green */
     margin-bottom: 4px;
 }
 
@@ -343,7 +355,8 @@
 }
 
 .drt-card-textarea:focus {
-    border-color: #89b4fa;
+    border-color: #c5d952;  /* MedLog lime green focus */
+    box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.1);
 }
 
 .drt-card-textarea::placeholder {
@@ -386,14 +399,16 @@
 }
 
 .drt-btn-export-primary {
-    background: #89b4fa;
+    background: #c5d952;  /* MedLog lime green */
     color: #1e1e2e;
-    border-color: #89b4fa;
+    border-color: #c5d952;
+    font-weight: 600;
 }
 
 .drt-btn-export-primary:hover {
-    background: #74a8fc;
-    border-color: #74a8fc;
+    background: #3d5f5c;  /* MedLog dark teal on hover */
+    color: white;
+    border-color: #3d5f5c;
 }
 
 /* ─── New Session Button ─────────────────────────────────── */

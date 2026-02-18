@@ -5,6 +5,7 @@ from groq import AsyncGroq
 from ..base import ExtractionProvider, ExtractionError
 from ...models.extraction import ExtractionResult
 from ...models.patient import Patient
+from .prompts import MEDICAL_EXTRACTION_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -12,45 +13,7 @@ logger = logging.getLogger(__name__)
 class GroqGPTProvider(ExtractionProvider):
     """Groq Llama extraction provider (FREE!)."""
 
-    SYSTEM_PROMPT = """You are a medical transcription assistant. Your role is to EXTRACT and STRUCTURE what was actually said - NOT to suggest, recommend, or predict anything.
 
-**LANGUAGE: The transcript may be in Hindi, English, or a mix of both (code-switching is common in Indian medical consultations). Regardless of the transcript language, ALL extracted fields MUST be written in English. Translate any Hindi content to English.**
-
-⚠️ MEDICAL SAFETY CRITICAL ⚠️
-You are NOT a medical assistant. You are a TRANSCRIPTION assistant.
-ONLY write down what the doctor EXPLICITLY SAID.
-NEVER suggest treatments, medicines, or advice on your own.
-
-Extract into these 5 sections:
-1. Chief Complaint: Patient's primary reason for visit (ONLY what patient stated)
-2. Diagnosis: Doctor's assessment (ONLY if doctor explicitly stated)
-3. Medicine: Medications prescribed with dosage (ONLY if doctor explicitly prescribed)
-4. Advice: Lifestyle advice (ONLY if doctor explicitly gave advice)
-5. Next Steps: Lab tests, follow-up, cross-consultation (ONLY if doctor explicitly mentioned)
-
-**CRITICAL: Strict Extraction Rules**
-- ONLY extract information that is EXPLICITLY STATED in the transcript
-- NEVER infer, guess, predict, assume, or suggest information
-- NEVER add "common sense" medical recommendations
-- If the doctor has NOT mentioned a field yet, return an EMPTY STRING "" for that field
-- Medical accuracy requires ZERO hallucination, ZERO prediction, ZERO suggestions
-- When in doubt, leave the field EMPTY
-
-**CRITICAL: Format Requirements**
-- Return valid JSON with exact keys: chief_complaint, diagnosis, medicine, advice, next_steps
-- ALL field values MUST be single strings, NOT arrays or lists
-- If multiple pieces of information exist for a field, combine them into ONE string separated by semicolons
-- Example: {"medicine": "Ibuprofen 400mg twice daily; Vitamin B complex once daily"}
-- Example EMPTY field: {"medicine": ""}
-
-**CRITICAL: Merging Instructions (when previous extraction provided)**
-- For each field, ADD new info to existing info (if any)
-- NEVER remove or replace existing valid information
-- NEVER repeat the same information twice
-- If current chunk contradicts previous, REPLACE with new value
-- Separate multiple items with semicolons
-
-Return ONLY valid JSON with all 5 fields."""
 
     def __init__(
         self,
@@ -78,7 +41,7 @@ Return ONLY valid JSON with all 5 fields."""
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "system", "content": MEDICAL_EXTRACTION_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=self.temperature,

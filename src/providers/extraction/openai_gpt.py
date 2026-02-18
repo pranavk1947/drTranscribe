@@ -5,24 +5,13 @@ from openai import AsyncOpenAI
 from ..base import ExtractionProvider, ExtractionError
 from ...models.extraction import ExtractionResult
 from ...models.patient import Patient
+from .prompts import MEDICAL_EXTRACTION_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
 
 class OpenAIGPTProvider(ExtractionProvider):
     """OpenAI GPT extraction provider."""
-    
-    SYSTEM_PROMPT = """You are a medical transcription assistant. Extract structured clinical information from doctor-patient conversation transcripts.
-
-Extract into these 5 sections:
-1. Chief Complaint: Patient's primary reason for visit
-2. Diagnosis: Doctor's assessment
-3. Medicine: Medications prescribed with dosage
-4. Advice: Lifestyle advice
-5. Next Steps: Lab tests, follow-up, cross-consultation
-
-Return JSON with exact keys: chief_complaint, diagnosis, medicine, advice, next_steps
-Merge with previous extraction if provided (append new information, don't replace)."""
     
     def __init__(self, api_key: str, model: str = "gpt-4", temperature: float = 0.3):
         self.client = AsyncOpenAI(api_key=api_key)
@@ -45,7 +34,7 @@ Merge with previous extraction if provided (append new information, don't replac
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "system", "content": MEDICAL_EXTRACTION_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=self.temperature,

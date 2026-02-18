@@ -5,6 +5,7 @@ import google.generativeai as genai
 from ..base import ExtractionProvider, ExtractionError
 from ...models.extraction import ExtractionResult
 from ...models.patient import Patient
+from .prompts import MEDICAL_EXTRACTION_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -12,52 +13,21 @@ logger = logging.getLogger(__name__)
 class GeminiGPTProvider(ExtractionProvider):
     """Google Gemini extraction provider."""
 
-    SYSTEM_PROMPT = """You are a medical transcription assistant. Your role is to EXTRACT and STRUCTURE what was actually said - NOT to suggest, recommend, or predict anything.
 
-**LANGUAGE: The transcript may be in Hindi, English, or a mix of both (code-switching is common in Indian medical consultations). Regardless of the transcript language, ALL extracted fields MUST be written in English. Translate any Hindi content to English.**
-
-⚠️ MEDICAL SAFETY CRITICAL ⚠️
-You are NOT a medical assistant. You are a TRANSCRIPTION assistant.
-ONLY write down what the doctor EXPLICITLY SAID.
-NEVER suggest treatments, medicines, or advice on your own.
-
-Extract into these 5 sections:
-1. Chief Complaint: Patient's primary reason for visit (ONLY what patient stated)
-2. Diagnosis: Doctor's assessment (ONLY if doctor explicitly stated)
-3. Medicine: Medications prescribed with dosage (ONLY if doctor explicitly prescribed)
-4. Advice: Lifestyle advice (ONLY if doctor explicitly gave advice)
-5. Next Steps: Lab tests, follow-up, cross-consultation (ONLY if doctor explicitly mentioned)
-
-**CRITICAL: Strict Extraction Rules**
-- ONLY extract information that is EXPLICITLY STATED in the transcript
-- NEVER infer, guess, predict, assume, or suggest information
-- If the doctor has NOT mentioned a field yet, return an EMPTY STRING "" for that field
-- Medical accuracy requires ZERO hallucination, ZERO prediction, ZERO suggestions
-
-**CRITICAL: Format Requirements**
-- Return valid JSON with exact keys: chief_complaint, diagnosis, medicine, advice, next_steps
-- ALL field values MUST be single strings, NOT arrays or lists
-- If multiple pieces of information exist for a field, combine them into ONE string separated by semicolons
-- Example: {"medicine": "Ibuprofen 400mg twice daily; Vitamin B complex once daily"}
-
-**CRITICAL: Merging Instructions (when previous extraction provided)**
-- For each field, ADD new info to existing info (if any)
-- NEVER remove or replace existing valid information
-- NEVER repeat the same information twice
-- Separate multiple items with semicolons
-
-Return ONLY valid JSON with all 5 fields."""
 
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-pro",
+        model: str = "gemini-2.5-flash",
         temperature: float = 0.3
     ):
         genai.configure(api_key=api_key)
 
-        # gemini-pro doesn't support response_mime_type, use basic config
-        generation_config = {"temperature": temperature}
+        # Gemini 1.5+ supports JSON response format
+        generation_config = {
+            "temperature": temperature,
+            "response_mime_type": "application/json"
+        }
 
         self.model = genai.GenerativeModel(
             model_name=model,
@@ -76,7 +46,7 @@ Return ONLY valid JSON with all 5 fields."""
         """Extract structured data using Gemini API."""
         try:
             user_prompt = self._build_user_prompt(transcript, patient, previous_extraction)
-            full_prompt = f"{self.SYSTEM_PROMPT}\n\n{user_prompt}"
+            full_prompt = f"{MEDICAL_EXTRACTION_SYSTEM_PROMPT}\n\n{user_prompt}"
 
             logger.debug(f"Sending extraction request for {len(transcript)} chars")
 

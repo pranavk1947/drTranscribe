@@ -19,6 +19,7 @@ class ExtractionConfig(BaseModel):
     provider: str
     model: str
     temperature: float = 0.3
+    min_transcript_length: int = 50  # Minimum chars before triggering extraction
 
 
 class OpenAIConfig(BaseModel):
@@ -63,6 +64,17 @@ class AudioSettings(BaseModel):
     channels: int = 1
 
 
+class AudioStorageConfig(BaseModel):
+    """Audio storage configuration."""
+    enabled: bool = True
+    temp_directory: str = "./data/temp/audio_chunks"
+    output_directory: str = "./data/consultations"
+    cleanup_temp_files: bool = True
+    # Future: Add GCS config here
+    # gcs_bucket: Optional[str] = None
+    # gcs_credentials_path: Optional[str] = None
+
+
 class Settings(BaseModel):
     """Application settings."""
     transcription: TranscriptionConfig
@@ -74,6 +86,7 @@ class Settings(BaseModel):
     gemini: Optional[GeminiConfig] = None
     server: ServerConfig
     audio: AudioSettings = AudioSettings()
+    audio_storage: AudioStorageConfig = AudioStorageConfig()
 
 
 def load_settings(config_path: str = None) -> Settings:

@@ -1,5 +1,5 @@
 /**
- * Content Script - Multi-platform overlay for drTranscribe
+ * Content Script - Multi-platform overlay for MedLog
  *
  * Supports Google Meet and Zoom Web Client.
  * Injects a non-intrusive floating badge on meeting pages.
@@ -207,8 +207,15 @@
         const badge = document.createElement('div');
         badge.id = 'drt-badge';
         badge.className = 'drt-badge drt-badge-detected';
-        badge.textContent = 'drT';
-        badge.title = 'drTranscribe - Click to open';
+
+        // Use MedLog logo image
+        const logoImg = document.createElement('img');
+        logoImg.src = chrome.runtime.getURL('icons/logo.png');
+        logoImg.alt = 'MedLog';
+        logoImg.className = 'drt-badge-logo';
+        badge.appendChild(logoImg);
+
+        badge.title = 'MedLog - Click to open';
         badge.addEventListener('click', async () => {
             const panel = document.getElementById('drt-panel');
             if (panel) {
@@ -234,7 +241,7 @@
         panel.innerHTML = `
             <div class="drt-header" id="drt-header">
                 <div class="drt-brand">
-                    <span class="drt-logo">drT</span>
+                    <span class="drt-logo">MedLog</span>
                     <span class="drt-status" id="drt-status">Ready</span>
                 </div>
                 <div class="drt-controls">

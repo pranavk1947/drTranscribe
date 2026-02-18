@@ -1,4 +1,4 @@
-# drTranscribe MVP
+# MedLog
 
 Real-time medical transcription system with structured clinical data extraction.
 
@@ -20,7 +20,7 @@ Real-time medical transcription system with structured clinical data extraction.
 
 **AudioWorklet + WAV Encoding**
 
-drTranscribe uses modern Web Audio API with AudioWorklet for medical-grade audio capture:
+MedLog uses modern Web Audio API with AudioWorklet for medical-grade audio capture:
 
 - ✅ **Complete WAV files**: Each chunk is a valid, standalone audio file
 - ✅ **Groq-optimized**: 16kHz mono WAV (Groq's recommended format)
@@ -123,7 +123,7 @@ extraction:
 ## Project Structure
 
 ```
-drTranscribe/
+MedLog/
 ├── src/
 │   ├── main.py                  # FastAPI application
 │   ├── websocket_handler.py     # WebSocket connection handler

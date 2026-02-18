@@ -27,7 +27,7 @@ header {
 }
 
 header h1 {
-    color: #2c3e50;
+    color: #3d5f5c;
     font-size: 2.5em;
     margin-bottom: 10px;
 }
@@ -46,7 +46,7 @@ header h1 {
 }
 
 .patient-form h2 {
-    color: #2c3e50;
+    color: #3d5f5c;
     margin-bottom: 15px;
     font-size: 1.5em;
 }
@@ -72,7 +72,8 @@ header h1 {
 
 .form-group input:focus {
     outline: none;
-    border-color: #3498db;
+    border-color: #c5d952;
+    box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.1);
 }
 
 .controls {
@@ -95,12 +96,16 @@ header h1 {
 }
 
 .btn-primary {
-    background-color: #27ae60;
-    color: white;
+    background-color: #c5d952;
+    color: #2c3e50;
+    font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-    background-color: #229954;
+    background-color: #3d5f5c;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(61, 95, 92, 0.3);
 }
 
 .btn-danger {
@@ -143,7 +148,7 @@ header h1 {
 }
 
 .extraction-sections h2 {
-    color: #2c3e50;
+    color: #3d5f5c;
     margin-bottom: 20px;
     font-size: 1.8em;
 }
@@ -154,14 +159,26 @@ header h1 {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     margin-bottom: 20px;
     overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.section-card:hover {
+    box-shadow: 0 4px 12px rgba(61, 95, 92, 0.2);
+    transform: translateY(-2px);
 }
 
 .section-card h3 {
-    background-color: #3498db;
+    background-color: #3d5f5c;
     color: white;
     padding: 15px;
     margin: 0;
     font-size: 1.2em;
+    transition: background-color 0.3s ease;
+}
+
+.section-card:hover h3 {
+    background-color: #c5d952;
+    color: #2c3e50;
 }
 
 .section-content {

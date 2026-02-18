@@ -4,9 +4,10 @@ transcription:
   output_format: "wav"          # Format to send to provider: "wav" or "webm"
 
 extraction:
-  provider: "groq"
-  model: "llama-3.3-70b-versatile"
+  provider: "gemini"
+  model: "gemini-2.5-flash"
   temperature: 0.3
+  min_transcript_length: 50  # Minimum characters before triggering extraction
 
 # OpenAI Configuration
 openai:
@@ -37,9 +38,15 @@ server:
   port: 8000
 
 audio:
-  chunk_duration_seconds: 6  # Duration of each audio chunk for real-time transcription
+  chunk_duration_seconds: 5  # Duration of each audio chunk for real-time transcription
   sample_rate: 16000         # Groq Whisper optimized sample rate (16kHz)
   channels: 1                # Mono channel (required for medical clarity)
+
+audio_storage:
+  enabled: true
+  temp_directory: "./data/temp/audio_chunks"
+  output_directory: "./data/consultations"
+  cleanup_temp_files: true
 
 # Chrome Extension Configuration (documentation only - no backend changes needed)
 # The extension connects to the same WebSocket endpoint and uses the same protocol.
