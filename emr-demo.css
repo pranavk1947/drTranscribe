@@ -300,9 +300,7 @@ select.form-input option {
 }
 
 .result-content:empty::before {
-    content: 'Not provided';
-    color: #585b70;
-    font-style: italic;
+    content: '';
 }
 
 .results-actions {

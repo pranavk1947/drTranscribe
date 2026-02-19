@@ -10,7 +10,7 @@
     <div class="emr-container">
         <header class="emr-header">
             <h1 class="emr-title">EMR System Demo</h1>
-            <p class="emr-subtitle">Test drTranscribe Broadcast Channel Integration</p>
+            <p class="emr-subtitle">Test EMR-Medlog Broadcast Channel Integration</p>
         </header>
 
         <div class="emr-content">
@@ -225,15 +225,15 @@
 
             // Update result cards
             document.getElementById('chiefComplaint').textContent =
-                extractedData.chief_complaint || 'Not provided';
+                extractedData.chief_complaint || '';
             document.getElementById('diagnosis').textContent =
-                extractedData.diagnosis || 'Not provided';
+                extractedData.diagnosis || '';
             document.getElementById('medicine').textContent =
-                extractedData.medicine || 'Not provided';
+                extractedData.medicine || '';
             document.getElementById('advice').textContent =
-                extractedData.advice || 'Not provided';
+                extractedData.advice || '';
             document.getElementById('nextSteps').textContent =
-                extractedData.next_steps || 'Not provided';
+                extractedData.next_steps || '';
 
             // Show results section
             resultsSection.style.display = 'block';

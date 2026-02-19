@@ -241,6 +241,7 @@
         panel.innerHTML = `
             <div class="drt-header" id="drt-header">
                 <div class="drt-brand">
+                    <div class="drt-logo-icon">M</div>
                     <span class="drt-logo">MedLog</span>
                     <span class="drt-status" id="drt-status">Ready</span>
                 </div>
@@ -251,62 +252,90 @@
             </div>
 
             <div class="drt-body" id="drt-body">
-                <div class="drt-section">
-                    <!-- Compact patient display (shown when appointmentData exists) -->
-                    <div id="drt-patient-display" style="display: none;">
-                        <div class="drt-section-title">Patient Info</div>
-                        <div class="drt-patient-info" id="drt-patient-info-text">
-                            Recording for: John Doe
+                <!-- Compact patient display (shown when appointmentData exists) -->
+                <div id="drt-patient-display" class="drt-patient-display" style="display: none;">
+                    <div class="drt-patient-avatar" id="drt-patient-avatar">PK</div>
+                    <div class="drt-patient-details">
+                        <div class="drt-patient-name" id="drt-patient-name-display">Patient Name</div>
+                        <div class="drt-patient-meta">
+                            <span class="drt-patient-tag" id="drt-patient-age-tag"></span>
+                            <span class="drt-patient-tag" id="drt-patient-gender-tag"></span>
+                            <span class="drt-patient-tag" id="drt-patient-id-tag"></span>
                         </div>
-                    </div>
-
-                    <!-- Full patient form (shown when no appointmentData) -->
-                    <div id="drt-patient-form-section">
-                        <div class="drt-section-title">Patient Info</div>
-                        <div class="drt-form-row">
-                            <input type="text" id="drt-patient-name" class="drt-input" placeholder="Patient Name" />
-                        </div>
-                        <div class="drt-form-row drt-form-row-split">
-                            <input type="number" id="drt-patient-age" class="drt-input drt-input-small" placeholder="Age" min="0" max="150" />
-                            <select id="drt-patient-gender" class="drt-input">
-                                <option value="" disabled selected>Gender</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Session controls (shared between both modes) -->
-                    <div class="drt-form-row drt-form-actions" id="drt-session-actions">
-                        <button id="drt-start-btn" class="drt-btn drt-btn-start">Start Session</button>
-                        <button id="drt-pause-btn" class="drt-btn drt-btn-pause" style="display: none;">Pause</button>
-                        <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>End Session</button>
                     </div>
                 </div>
 
-                <div class="drt-section drt-results" id="drt-results">
-                    <div class="drt-card">
-                        <div class="drt-card-title">Chief Complaint</div>
-                        <div class="drt-card-content drt-empty" id="drt-chief-complaint">Waiting for session...</div>
+                <!-- Full patient form (shown when no appointmentData) -->
+                <div id="drt-patient-form-section">
+                    <div class="drt-section-title">Patient Info</div>
+                    <div class="drt-form-row">
+                        <input type="text" id="drt-patient-name" class="drt-input" placeholder="Patient Name" />
                     </div>
-                    <div class="drt-card">
-                        <div class="drt-card-title">Diagnosis</div>
-                        <div class="drt-card-content drt-empty" id="drt-diagnosis">Waiting for session...</div>
-                    </div>
-                    <div class="drt-card">
-                        <div class="drt-card-title">Medicine</div>
-                        <div class="drt-card-content drt-empty" id="drt-medicine">Waiting for session...</div>
-                    </div>
-                    <div class="drt-card">
-                        <div class="drt-card-title">Advice</div>
-                        <div class="drt-card-content drt-empty" id="drt-advice">Waiting for session...</div>
-                    </div>
-                    <div class="drt-card">
-                        <div class="drt-card-title">Next Steps</div>
-                        <div class="drt-card-content drt-empty" id="drt-next-steps">Waiting for session...</div>
+                    <div class="drt-form-row drt-form-row-split">
+                        <input type="number" id="drt-patient-age" class="drt-input drt-input-small" placeholder="Age" min="0" max="150" />
+                        <select id="drt-patient-gender" class="drt-input">
+                            <option value="" disabled selected>Gender</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
                     </div>
                 </div>
+
+                <!-- Session controls -->
+                <div class="drt-session-controls" id="drt-session-actions">
+                    <button id="drt-start-btn" class="drt-btn drt-btn-start">&#x25B6; Start Session</button>
+                    <button id="drt-pause-btn" class="drt-btn drt-btn-pause" style="display: none;">Pause</button>
+                    <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>&#x25A0; End Session</button>
+                </div>
+
+                <div class="drt-results" id="drt-results">
+                    <div class="drt-card drt-card-chief">
+                        <div class="drt-card-header">
+                            <span class="drt-card-icon">&#x1FA7A;</span>
+                            <span class="drt-card-title">Chief Complaint</span>
+                            <span class="drt-card-badge" id="drt-badge-chief-complaint">PENDING</span>
+                        </div>
+                        <div class="drt-card-content drt-empty" id="drt-chief-complaint">Waiting for session to begin...</div>
+                    </div>
+                    <div class="drt-card drt-card-diagnosis">
+                        <div class="drt-card-header">
+                            <span class="drt-card-icon">&#x1F4CB;</span>
+                            <span class="drt-card-title">Diagnosis</span>
+                            <span class="drt-card-badge" id="drt-badge-diagnosis">PENDING</span>
+                        </div>
+                        <div class="drt-card-content drt-empty" id="drt-diagnosis">Waiting for session to begin...</div>
+                    </div>
+                    <div class="drt-card drt-card-medicine">
+                        <div class="drt-card-header">
+                            <span class="drt-card-icon">&#x1F48A;</span>
+                            <span class="drt-card-title">Medicine</span>
+                            <span class="drt-card-badge" id="drt-badge-medicine">PENDING</span>
+                        </div>
+                        <div class="drt-card-content drt-empty" id="drt-medicine">Waiting for session to begin...</div>
+                    </div>
+                    <div class="drt-card drt-card-advice">
+                        <div class="drt-card-header">
+                            <span class="drt-card-icon">&#x1F4AC;</span>
+                            <span class="drt-card-title">Advice</span>
+                            <span class="drt-card-badge" id="drt-badge-advice">PENDING</span>
+                        </div>
+                        <div class="drt-card-content drt-empty" id="drt-advice">Waiting for session to begin...</div>
+                    </div>
+                    <div class="drt-card drt-card-nextsteps">
+                        <div class="drt-card-header">
+                            <span class="drt-card-icon">&#x27A1;</span>
+                            <span class="drt-card-title">Next Steps</span>
+                            <span class="drt-card-badge" id="drt-badge-next-steps">PENDING</span>
+                        </div>
+                        <div class="drt-card-content drt-empty" id="drt-next-steps">Waiting for session to begin...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="drt-footer">
+                <span class="drt-footer-version">MedLog v2.1 &middot; HIPAA Compliant</span>
+                <span class="drt-footer-status" id="drt-footer-status">&#x25CF; Not Recording</span>
             </div>
         `;
 
@@ -322,21 +351,35 @@
     function updatePatientDisplay() {
         const displayEl = document.getElementById('drt-patient-display');
         const formEl = document.getElementById('drt-patient-form-section');
-        const infoTextEl = document.getElementById('drt-patient-info-text');
 
         if (!displayEl || !formEl) return;
 
         if (appointmentData && appointmentData.patient) {
-            // Show compact display with patient info
-            displayEl.style.display = 'block';
+            // Show compact display with avatar and metadata pills
+            displayEl.style.display = 'flex';
             formEl.style.display = 'none';
 
             const { name, age, gender } = appointmentData.patient;
-            const ageStr = age ? `, ${age}` : '';
-            const genderStr = gender ? `, ${gender}` : '';
-            if (infoTextEl) {
-                infoTextEl.textContent = `Recording for: ${name}${ageStr}${genderStr}`;
+            const appointmentId = appointmentData.appointmentId || '';
+
+            // Avatar initials
+            const avatarEl = document.getElementById('drt-patient-avatar');
+            if (avatarEl) {
+                const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                avatarEl.textContent = initials;
             }
+
+            const nameEl = document.getElementById('drt-patient-name-display');
+            if (nameEl) nameEl.textContent = name;
+
+            const ageTag = document.getElementById('drt-patient-age-tag');
+            if (ageTag) ageTag.textContent = age ? `${age} yrs` : '';
+
+            const genderTag = document.getElementById('drt-patient-gender-tag');
+            if (genderTag) genderTag.textContent = gender || '';
+
+            const idTag = document.getElementById('drt-patient-id-tag');
+            if (idTag) idTag.textContent = appointmentId ? `ID #${appointmentId}` : '';
         } else {
             // Show full form for manual entry
             displayEl.style.display = 'none';
@@ -489,10 +532,22 @@
 
     function setStatus(text, state) {
         const statusEl = document.getElementById('drt-status');
-        if (!statusEl) return;
-        statusEl.textContent = text;
-        statusEl.className = 'drt-status';
-        if (state) statusEl.classList.add('drt-status-' + state);
+        if (statusEl) {
+            statusEl.textContent = text;
+            statusEl.className = 'drt-status';
+            if (state) statusEl.classList.add('drt-status-' + state);
+        }
+        // Update footer status
+        const footerStatus = document.getElementById('drt-footer-status');
+        if (footerStatus) {
+            if (state === 'recording') {
+                footerStatus.textContent = '\u25CF Recording';
+                footerStatus.className = 'drt-footer-status drt-footer-recording';
+            } else {
+                footerStatus.textContent = '\u25CF Not Recording';
+                footerStatus.className = 'drt-footer-status';
+            }
+        }
     }
 
     function setSessionActive(active) {
@@ -540,17 +595,32 @@
             if (value && value.trim()) {
                 el.textContent = value;
                 el.classList.remove('drt-empty');
+                // Update card badge
+                const badgeId = 'drt-badge-' + key.replace(/_/g, '-');
+                const badge = document.getElementById(badgeId);
+                if (badge) {
+                    badge.textContent = 'UPDATED';
+                    badge.classList.add('drt-badge-updated');
+                }
             }
         }
     }
 
     function resetResults() {
         const ids = ['drt-chief-complaint', 'drt-diagnosis', 'drt-medicine', 'drt-advice', 'drt-next-steps'];
+        const badgeIds = ['drt-badge-chief-complaint', 'drt-badge-diagnosis', 'drt-badge-medicine', 'drt-badge-advice', 'drt-badge-next-steps'];
         for (const id of ids) {
             const el = document.getElementById(id);
             if (el) {
-                el.textContent = 'Waiting for session...';
+                el.textContent = 'Waiting for session to begin...';
                 el.classList.add('drt-empty');
+            }
+        }
+        for (const id of badgeIds) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = 'PENDING';
+                el.classList.remove('drt-badge-updated');
             }
         }
     }
@@ -679,9 +749,17 @@
             const div = document.createElement('div');
             div.id = fieldIds[key];
             div.className = 'drt-card-content drt-empty';
-            div.textContent = 'Waiting for session...';
+            div.textContent = 'Waiting for session to begin...';
 
             textarea.parentNode.replaceChild(div, textarea);
+
+            // Reset badge
+            const badgeId = 'drt-badge-' + key.replace(/_/g, '-');
+            const badge = document.getElementById(badgeId);
+            if (badge) {
+                badge.textContent = 'PENDING';
+                badge.classList.remove('drt-badge-updated');
+            }
         }
 
         // Remove export bar

@@ -1,19 +1,19 @@
 /* MedLog - Meeting Overlay Panel + Badge
  * All classes prefixed drt- to avoid conflicts with Meet/Zoom CSS.
- * Dark theme to blend with meeting UIs with MedLog green branding.
+ * Dark theme with MedLog branding.
  */
 
 /* ─── Floating Badge ────────────────────────────────────────── */
 
 .drt-badge {
     position: fixed;
-    bottom: 80px;  /* Changed from 24px */
+    bottom: 80px;
     right: 24px;
     width: 50px;
     height: 50px;
-    border-radius: 12px;  /* Rounded square instead of circle */
-    background: #3d5f5c;  /* MedLog dark teal */
-    border: none;  /* No border - let the logo stand out */
+    border-radius: 12px;
+    background: #3d5f5c;
+    border: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -22,14 +22,14 @@
     z-index: 2147483646;
     transition: transform 0.15s, box-shadow 0.2s;
     user-select: none;
-    overflow: hidden;  /* Clip any content outside */
+    overflow: hidden;
 }
 
 .drt-badge-logo {
     width: 100%;
     height: 100%;
-    object-fit: contain;  /* Contain the full logo */
-    border-radius: 8px;  /* Slight rounding to match container */
+    object-fit: contain;
+    border-radius: 8px;
 }
 
 .drt-badge:hover {
@@ -56,16 +56,16 @@
     position: fixed;
     top: 80px;
     right: 16px;
-    width: 320px;
+    width: 300px;
     max-height: calc(100vh - 100px);
-    background: #1e1e2e;
-    border: 1px solid #313244;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    background: #141820;
+    border: 1px solid #2a3040;
+    border-radius: 14px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
     z-index: 2147483647;
     font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
-    font-size: 13px;
-    color: #cdd6f4;
+    font-size: 12px;
+    color: #e0e6f0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -73,7 +73,7 @@
 }
 
 .drt-panel:hover {
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 12px 56px rgba(0, 0, 0, 0.7);
 }
 
 /* ─── Header ─────────────────────────────────────────────── */
@@ -83,10 +83,10 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 12px;
-    background: #181825;
+    background: #181d28;
     cursor: grab;
     user-select: none;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid #2a3040;
 }
 
 .drt-header:active {
@@ -96,38 +96,61 @@
 .drt-brand {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+}
+
+.drt-logo-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #1e2430;
+    border: 2px solid #5a6a4a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 13px;
+    color: #c5d952;
+    flex-shrink: 0;
 }
 
 .drt-logo {
     font-weight: 700;
-    font-size: 16px;
-    color: #c5d952;  /* MedLog lime green */
-    letter-spacing: -0.5px;
+    font-size: 15px;
+    color: #f0f4ff;
+    letter-spacing: -0.3px;
 }
 
 .drt-status {
     font-size: 11px;
-    color: #6c7086;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: #313244;
+    font-weight: 600;
+    color: #c5d952;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(197, 217, 82, 0.15);
+    white-space: nowrap;
+}
+
+.drt-status::before {
+    content: '\25CF';
+    margin-right: 4px;
+    font-size: 8px;
 }
 
 .drt-status-connecting {
     color: #f9e2af;
-    background: #433a27;
+    background: rgba(249, 226, 175, 0.12);
 }
 
 .drt-status-recording {
-    color: #c5d952;  /* MedLog lime green */
-    background: #2a3d3b;
+    color: #c5d952;
+    background: rgba(197, 217, 82, 0.15);
     animation: drt-pulse 1.5s ease-in-out infinite;
 }
 
 .drt-status-error {
     color: #f38ba8;
-    background: #3a2727;
+    background: rgba(243, 139, 168, 0.12);
 }
 
 @keyframes drt-pulse {
@@ -141,31 +164,31 @@
 }
 
 .drt-btn-icon {
-    background: none;
-    border: none;
-    color: #6c7086;
+    background: #232a38;
+    border: 1px solid #2e3648;
+    color: #8090a8;
     cursor: pointer;
-    padding: 4px 6px;
-    border-radius: 6px;
-    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 13px;
     line-height: 1;
     transition: background 0.15s, color 0.15s;
 }
 
 .drt-btn-icon:hover {
-    background: #313244;
-    color: #cdd6f4;
+    background: #2e3648;
+    color: #e0e6f0;
 }
 
 /* ─── Body ───────────────────────────────────────────────── */
 
 .drt-body {
     overflow-y: auto;
-    max-height: calc(100vh - 160px);
-    padding: 12px;
+    flex: 1;
+    padding: 10px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .drt-body::-webkit-scrollbar {
@@ -177,18 +200,71 @@
 }
 
 .drt-body::-webkit-scrollbar-thumb {
-    background: #45475a;
+    background: #2e3648;
     border-radius: 2px;
 }
 
-/* ─── Patient Form ───────────────────────────────────────── */
+/* ─── Patient Display (Compact - from EMR) ─────────────── */
+
+.drt-patient-display {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #232a38;
+}
+
+.drt-patient-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #1e2430;
+    border: 2px solid #5a6a4a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: #c5d952;
+    flex-shrink: 0;
+}
+
+.drt-patient-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.drt-patient-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f0f4ff;
+}
+
+.drt-patient-meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.drt-patient-tag {
+    font-size: 10px;
+    font-weight: 500;
+    color: #8090a8;
+    background: #232a38;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+/* ─── Patient Form (Manual Entry) ─────────────────────── */
 
 .drt-section-title {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #6c7086;
+    color: #6c7a8e;
     margin-bottom: 8px;
 }
 
@@ -203,11 +279,11 @@
 
 .drt-input {
     width: 100%;
-    padding: 8px 10px;
-    background: #313244;
-    border: 1px solid #45475a;
-    border-radius: 8px;
-    color: #cdd6f4;
+    padding: 10px 12px;
+    background: #1e2430;
+    border: 1px solid #2e3648;
+    border-radius: 10px;
+    color: #e0e6f0;
     font-size: 13px;
     font-family: inherit;
     outline: none;
@@ -216,12 +292,12 @@
 }
 
 .drt-input:focus {
-    border-color: #c5d952;  /* MedLog lime green focus */
-    box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.1);
+    border-color: #c5d952;
+    box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.08);
 }
 
 .drt-input:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
@@ -231,65 +307,65 @@
 }
 
 .drt-input option {
-    background: #313244;
-    color: #cdd6f4;
+    background: #1e2430;
+    color: #e0e6f0;
 }
 
-/* ─── Buttons ────────────────────────────────────────────── */
+/* ─── Session Buttons ────────────────────────────────────── */
 
-.drt-form-actions {
+.drt-session-controls {
     display: flex;
     gap: 8px;
 }
 
 .drt-btn {
     flex: 1;
-    padding: 8px 12px;
+    padding: 9px 12px;
     border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
     font-family: inherit;
     cursor: pointer;
-    transition: background 0.15s, opacity 0.15s;
+    transition: all 0.15s;
+    letter-spacing: 0.2px;
 }
 
 .drt-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
 }
 
 .drt-btn-start {
-    background: #c5d952;  /* MedLog lime green */
-    color: #1e1e2e;
-    font-weight: 600;
+    background: #c5d952;
+    color: #141820;
 }
 
 .drt-btn-start:hover:not(:disabled) {
-    background: #3d5f5c;  /* MedLog dark teal on hover */
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(61, 95, 92, 0.3);
+    background: #d4e65e;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(197, 217, 82, 0.3);
 }
 
 .drt-btn-stop {
-    background: #f38ba8;
-    color: #1e1e2e;
+    background: #2a1520;
+    color: #f06070;
+    border: 1px solid #3a2030;
 }
 
 .drt-btn-stop:hover:not(:disabled) {
-    background: #f07090;
+    background: #351a28;
+    border-color: #4a2838;
 }
 
 .drt-btn-pause {
-    background: #c5d952;  /* MedLog lime green */
-    color: #1e1e2e;
-    font-weight: 600;
+    background: #c5d952;
+    color: #141820;
+    font-weight: 700;
 }
 
 .drt-btn-pause:hover:not(:disabled) {
-    background: #3d5f5c;  /* MedLog dark teal on hover */
-    color: white;
+    background: #d4e65e;
 }
 
 /* ─── Result Cards ───────────────────────────────────────── */
@@ -297,41 +373,86 @@
 .drt-results {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .drt-card {
-    background: #181825;
-    border: 1px solid #313244;
-    border-radius: 8px;
+    background: #1a2030;
+    border: 1px solid #252d3e;
+    border-radius: 10px;
     padding: 10px 12px;
-    transition: border-color 0.2s;
+    border-left: 3px solid #2e3648;
+    transition: border-color 0.2s, background 0.2s;
 }
 
 .drt-card:hover {
-    border-color: #45475a;
-    background: #1e2a29;  /* Slightly green tint on hover */
+    background: #1e2538;
+}
+
+/* Card accent colors */
+.drt-card-chief { border-left-color: #c5d952; }
+.drt-card-diagnosis { border-left-color: #ff6b8a; }
+.drt-card-medicine { border-left-color: #f0a030; }
+.drt-card-advice { border-left-color: #39d2c0; }
+.drt-card-nextsteps { border-left-color: #bc8cff; }
+
+.drt-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.drt-card-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    background: #232a38;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
 }
 
 .drt-card-title {
     font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    flex: 1;
+}
+
+/* Card title colors matching accent */
+.drt-card-chief .drt-card-title { color: #c5d952; }
+.drt-card-diagnosis .drt-card-title { color: #ff6b8a; }
+.drt-card-medicine .drt-card-title { color: #f0a030; }
+.drt-card-advice .drt-card-title { color: #39d2c0; }
+.drt-card-nextsteps .drt-card-title { color: #bc8cff; }
+
+.drt-card-badge {
+    font-size: 9px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #c5d952;  /* MedLog lime green */
-    margin-bottom: 4px;
+    color: #5a6878;
+    white-space: nowrap;
+}
+
+.drt-card-badge.drt-badge-updated {
+    color: #c5d952;
 }
 
 .drt-card-content {
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1.5;
-    color: #cdd6f4;
+    color: #c0c8d8;
     white-space: pre-wrap;
     word-break: break-word;
 }
 
 .drt-card-content.drt-empty {
-    color: #585b70;
+    color: #4a5568;
     font-style: italic;
 }
 
@@ -340,11 +461,11 @@
 .drt-card-textarea {
     width: 100%;
     min-height: 60px;
-    padding: 8px 10px;
-    background: #313244;
-    border: 1px solid #45475a;
-    border-radius: 6px;
-    color: #cdd6f4;
+    padding: 10px 12px;
+    background: #1e2430;
+    border: 1px solid #2e3648;
+    border-radius: 8px;
+    color: #e0e6f0;
     font-size: 13px;
     font-family: inherit;
     line-height: 1.5;
@@ -355,21 +476,21 @@
 }
 
 .drt-card-textarea:focus {
-    border-color: #c5d952;  /* MedLog lime green focus */
-    box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.1);
+    border-color: #c5d952;
+    box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.08);
 }
 
 .drt-card-textarea::placeholder {
-    color: #585b70;
+    color: #4a5568;
     font-style: italic;
 }
 
 /* ─── Export Bar ─────────────────────────────────────────── */
 
 .drt-export-bar {
-    padding-top: 12px;
+    padding-top: 14px;
     margin-top: 4px;
-    border-top: 1px solid #313244;
+    border-top: 1px solid #232a38;
 }
 
 .drt-export-actions {
@@ -380,11 +501,11 @@
 }
 
 .drt-btn-export {
-    padding: 8px 10px;
-    background: #313244;
-    border: 1px solid #45475a;
-    border-radius: 8px;
-    color: #cdd6f4;
+    padding: 10px 12px;
+    background: #1e2430;
+    border: 1px solid #2e3648;
+    border-radius: 10px;
+    color: #c0c8d8;
     font-size: 12px;
     font-weight: 600;
     font-family: inherit;
@@ -394,32 +515,31 @@
 }
 
 .drt-btn-export:hover {
-    background: #45475a;
-    border-color: #585b70;
+    background: #252d3e;
+    border-color: #3a4458;
 }
 
 .drt-btn-export-primary {
-    background: #c5d952;  /* MedLog lime green */
-    color: #1e1e2e;
+    background: #c5d952;
+    color: #141820;
     border-color: #c5d952;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .drt-btn-export-primary:hover {
-    background: #3d5f5c;  /* MedLog dark teal on hover */
-    color: white;
-    border-color: #3d5f5c;
+    background: #d4e65e;
+    border-color: #d4e65e;
 }
 
 /* ─── New Session Button ─────────────────────────────────── */
 
 .drt-btn-new-session {
     width: 100%;
-    padding: 8px 12px;
+    padding: 10px 12px;
     background: transparent;
-    border: 1px dashed #45475a;
-    border-radius: 8px;
-    color: #6c7086;
+    border: 1px dashed #2e3648;
+    border-radius: 10px;
+    color: #6c7a8e;
     font-size: 12px;
     font-weight: 600;
     font-family: inherit;
@@ -428,9 +548,36 @@
 }
 
 .drt-btn-new-session:hover {
-    background: #313244;
-    color: #cdd6f4;
-    border-color: #585b70;
+    background: #1e2430;
+    color: #e0e6f0;
+    border-color: #3a4458;
+}
+
+/* ─── Footer ─────────────────────────────────────────────── */
+
+.drt-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #181d28;
+    border-top: 1px solid #2a3040;
+    font-size: 10px;
+    color: #4a5568;
+}
+
+.drt-footer-version {
+    color: #4a5568;
+}
+
+.drt-footer-status {
+    color: #5a6878;
+    font-weight: 600;
+}
+
+.drt-footer-recording {
+    color: #c5d952;
+    animation: drt-pulse 1.5s ease-in-out infinite;
 }
 
 /* ─── Toast Notification ─────────────────────────────────── */
@@ -439,11 +586,11 @@
     position: fixed;
     bottom: 80px;
     right: 24px;
-    padding: 10px 20px;
-    background: #313244;
-    border: 1px solid #45475a;
-    border-radius: 8px;
-    color: #cdd6f4;
+    padding: 12px 20px;
+    background: #232a38;
+    border: 1px solid #2e3648;
+    border-radius: 10px;
+    color: #e0e6f0;
     font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
     font-size: 13px;
     font-weight: 500;
