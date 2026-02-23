@@ -1,13 +1,13 @@
 transcription:
-  provider: "groq"              # Options: "groq", "gemini", "openai", "azure", "mock"
-  model: "whisper-large-v3"     # For groq: "whisper-large-v3", for gemini: "gemini-2.0-flash"
+  provider: "groq"              # Options: "groq", "gemini", "google_stt", "openai", "azure", "mock"
+  model: "whisper-large-v3"     # For google_stt: "default", groq: "whisper-large-v3", gemini: "gemini-2.0-flash"
   output_format: "wav"          # Format to send to provider: "wav" or "webm"
 
 extraction:
   provider: "gemini"
   model: "gemini-2.5-flash"
   temperature: 0.3
-  min_transcript_length: 50  # Minimum characters before triggering extraction
+  min_transcript_length: 30  # Minimum characters before triggering extraction
 
 # OpenAI Configuration
 openai:
@@ -38,7 +38,7 @@ server:
   port: 8000
 
 audio:
-  chunk_duration_seconds: 5  # Duration of each audio chunk for real-time transcription
+  chunk_duration_seconds: 3  # Duration of each audio chunk for real-time transcription
   sample_rate: 16000         # Groq Whisper optimized sample rate (16kHz)
   channels: 1                # Mono channel (required for medical clarity)
 

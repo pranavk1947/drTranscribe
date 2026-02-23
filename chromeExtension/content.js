@@ -66,6 +66,21 @@
     let micChunkDuration = 7; // seconds (overridden by server config)
 
     /**
+     * Check if audio samples contain speech-level energy.
+     * @param {Float32Array} samples - Audio samples in [-1.0, 1.0] range
+     * @param {number} threshold - RMS threshold (0.01 = conservative for speech)
+     * @returns {boolean} true if speech detected
+     */
+    function hasSpeechEnergy(samples, threshold = 0.01) {
+        let sumSq = 0;
+        for (let i = 0; i < samples.length; i++) {
+            sumSq += samples[i] * samples[i];
+        }
+        const rms = Math.sqrt(sumSq / samples.length);
+        return rms >= threshold;
+    }
+
+    /**
      * Downsample audio from native rate to target rate using linear interpolation
      */
     function downsampleMic(samples, fromRate, toRate) {
@@ -107,6 +122,12 @@
         const nativeRate = micAudioContext.sampleRate;
         const downsampled = downsampleMic(allSamples, nativeRate, micTargetSampleRate);
 
+        // Voice Activity Detection: skip silent/noise-only chunks
+        if (!hasSpeechEnergy(downsampled)) {
+            console.log('[drT Content] Silent mic chunk, skipping');
+            return;
+        }
+
         // Encode to WAV
         const wavBlob = WavEncoder.encode(downsampled, micTargetSampleRate, 1);
 
@@ -116,7 +137,8 @@
             const base64Data = reader.result.split(',')[1];
             chrome.runtime.sendMessage({
                 type: 'audio-chunk',
-                audio_data: base64Data
+                audio_data: base64Data,
+                source: 'mic'
             });
             console.log(`[drT Content] Sent mic chunk: ${allSamples.length} native -> ${downsampled.length} @${micTargetSampleRate}Hz`);
         };
@@ -149,6 +171,13 @@
 
             const source = micAudioContext.createMediaStreamSource(micStream);
 
+            // Anti-alias filter: remove frequencies above target Nyquist (8kHz)
+            // before downsampling from 48kHz to 16kHz. Prevents aliasing artifacts.
+            const antiAliasFilter = micAudioContext.createBiquadFilter();
+            antiAliasFilter.type = 'lowpass';
+            antiAliasFilter.frequency.value = 7500;
+            antiAliasFilter.Q.value = 0.707; // Butterworth — flat passband
+
             // ScriptProcessorNode to accumulate raw samples
             micScriptProcessor = micAudioContext.createScriptProcessor(4096, 1, 1);
             micScriptProcessor.onaudioprocess = (event) => {
@@ -156,7 +185,9 @@
                 micBuffer.push(new Float32Array(inputData));
             };
 
-            source.connect(micScriptProcessor);
+            // Connect: source -> antiAliasFilter -> micScriptProcessor
+            source.connect(antiAliasFilter);
+            antiAliasFilter.connect(micScriptProcessor);
             // ScriptProcessor must connect to destination to keep firing
             micScriptProcessor.connect(micAudioContext.destination);
 

@@ -152,20 +152,68 @@ async function connectWebSocket(serverUrl, patientInfo) {
 }
 
 function disconnectWebSocket() {
-    if (websocket) {
-        if (websocket.readyState === WebSocket.OPEN) {
-            websocket.send(JSON.stringify({ type: 'stop_session' }));
+    return new Promise((resolve) => {
+        if (!websocket) {
+            resolve();
+            return;
         }
-        websocket.close();
-        websocket = null;
-    }
+
+        if (websocket.readyState !== WebSocket.OPEN) {
+            websocket.close();
+            websocket = null;
+            resolve();
+            return;
+        }
+
+        // Wait for server acknowledgment before closing
+        const ws = websocket;
+        let resolved = false;
+
+        const cleanup = () => {
+            if (resolved) return;
+            resolved = true;
+            try { ws.close(); } catch {}
+            websocket = null;
+            resolve();
+        };
+
+        // Listen for session_stopped acknowledgment from server
+        const originalOnMessage = ws.onmessage;
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'session_stopped') {
+                    console.log('[BG] Server acknowledged session stop');
+                    cleanup();
+                    return;
+                }
+                // Forward other messages (extraction updates) as usual
+                if (originalOnMessage) originalOnMessage(event);
+            } catch {
+                if (originalOnMessage) originalOnMessage(event);
+            }
+        };
+
+        // Safety timeout — close after 5s even if no ack
+        setTimeout(() => {
+            if (!resolved) {
+                console.warn('[BG] Timed out waiting for server ack, closing WebSocket');
+                cleanup();
+            }
+        }, 5000);
+
+        // Send stop_session
+        ws.send(JSON.stringify({ type: 'stop_session' }));
+        console.log('[BG] Sent stop_session, waiting for server ack...');
+    });
 }
 
-function sendAudioChunk(audioData) {
+function sendAudioChunk(audioData, source) {
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         const message = {
             type: 'audio_chunk',
-            audio_data: audioData
+            audio_data: audioData,
+            source: source || 'unknown'
         };
         websocket.send(JSON.stringify(message));
     }
@@ -229,8 +277,8 @@ async function stopSession() {
         // Offscreen may already be gone
     }
 
-    // 2. Disconnect WebSocket (sends stop_session first)
-    disconnectWebSocket();
+    // 2. Disconnect WebSocket (sends stop_session, waits for server ack)
+    await disconnectWebSocket();
 
     // 3. Close offscreen document
     await closeOffscreenDocument();
@@ -265,9 +313,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // async response
     }
 
-    // Messages from offscreen document
+    // Messages from offscreen document or content script (audio)
     if (message.type === 'audio-chunk') {
-        sendAudioChunk(message.audio_data);
+        sendAudioChunk(message.audio_data, message.source);
         return false;
     }
 

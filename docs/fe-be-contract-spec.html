@@ -1,0 +1,317 @@
+<h1>drTranscribe &mdash; Frontend-Backend Contract Specification</h1>
+
+<h2>Context</h2>
+<p>Separating FE (Chrome Extension + UI) and BE (WebSocket server + extraction pipeline) into independent workstreams. This document is the <strong>exhaustive interface contract</strong> that the FE team needs to build against. All message shapes, REST endpoints, audio format specs, and session lifecycle are documented below.</p>
+
+<hr/>
+
+<h2>1. REST Endpoints</h2>
+
+<h3><code>GET /api/config</code></h3>
+<p>FE calls this at startup to get audio capture parameters.</p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "audio": {
+    "chunk_duration_seconds": 7,
+    "sample_rate": 16000,
+    "channels": 1
+  }
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>chunk_duration_seconds</code></td><td>int</td><td>How many seconds of audio per chunk (default 7)</td></tr>
+<tr><td><code>sample_rate</code></td><td>int</td><td>Target sample rate in Hz (default 16000)</td></tr>
+<tr><td><code>channels</code></td><td>int</td><td>1=mono (always 1 for medical clarity)</td></tr>
+</table>
+
+<p><strong>Source:</strong> <code>src/main.py:76-92</code></p>
+
+<hr/>
+
+<h3><code>GET /health</code></h3>
+<p>Health check endpoint.</p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "status": "healthy",
+  "active_sessions": 2
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p><strong>Source:</strong> <code>src/main.py:68-73</code></p>
+
+<hr/>
+
+<h2>2. WebSocket Endpoint</h2>
+<p><strong>URL:</strong> <code>ws://{host}:8000/ws</code></p>
+<p>All messages are JSON text frames with a required <code>type</code> field.</p>
+
+<hr/>
+
+<h3>2.1 Client &rarr; Server Messages</h3>
+
+<h4><code>start_session</code></h4>
+<p>Sent once after WebSocket connects. Opens a new consultation.</p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "type": "start_session",
+  "patient": {
+    "name": "John Doe",
+    "age": 45,
+    "gender": "Male",
+    "history": "Optional medical history"
+  },
+  "appointmentId": "APT-2024-001"
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Validation</th></tr>
+<tr><td><code>patient.name</code></td><td>string</td><td>yes</td><td>1-200 chars, non-empty</td></tr>
+<tr><td><code>patient.age</code></td><td>int</td><td>yes</td><td>0-150</td></tr>
+<tr><td><code>patient.gender</code></td><td>string</td><td>yes</td><td>1-50 chars, non-empty</td></tr>
+<tr><td><code>patient.history</code></td><td>string</td><td>no</td><td>Free text</td></tr>
+<tr><td><code>appointmentId</code></td><td>string</td><td>no</td><td>External EMR ID</td></tr>
+</table>
+
+<p><strong>No acknowledgment sent.</strong> Connection stays open. If validation fails, an <code>error</code> message is sent back.</p>
+<p><strong>Source:</strong> <code>src/models/websocket_messages.py:7-12</code>, <code>src/websocket_handler.py:50-70</code></p>
+
+<hr/>
+
+<h4><code>audio_chunk</code></h4>
+<p>Sent continuously during recording (every <code>chunk_duration_seconds</code>).</p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "type": "audio_chunk",
+  "audio_data": "<base64-encoded-WAV>",
+  "source": "mic"
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Values</th><th>Description</th></tr>
+<tr><td><code>audio_data</code></td><td>string</td><td>Base64</td><td>WAV-encoded audio (see Audio Format section)</td></tr>
+<tr><td><code>source</code></td><td>string</td><td><code>"mic"</code> or <code>"tab"</code></td><td><code>mic</code> = doctor&rsquo;s microphone, <code>tab</code> = patient audio from Google Meet</td></tr>
+</table>
+
+<p><strong>No direct response.</strong> Backend processes async, sends <code>extraction_update</code> when ready.</p>
+<p><strong>Source:</strong> <code>src/models/websocket_messages.py:15-20</code></p>
+
+<hr/>
+
+<h4><code>stop_session</code></h4>
+<p>Sent when user ends the consultation.</p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "type": "stop_session"
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p><strong>Response:</strong> Server sends <code>session_stopped</code> after final processing completes.</p>
+<p><strong>Source:</strong> <code>src/models/websocket_messages.py:23-26</code>, <code>src/websocket_handler.py:84-110</code></p>
+
+<hr/>
+
+<h3>2.2 Server &rarr; Client Messages</h3>
+
+<h4><code>extraction_update</code></h4>
+<p>Sent when the backend completes a new extraction pass. <strong>Throttled: max 1 per 5 seconds per session.</strong></p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "type": "extraction_update",
+  "extraction": {
+    "chief_complaint": "headache for 3 days; nausea",
+    "diagnosis": "migraine; triggered by long screen hours; family history of migraine",
+    "medicine": "Paracetamol 500mg twice daily",
+    "advice": "reduce screen time; avoid peanuts",
+    "next_steps": "get CBC test done; follow-up in 1 week"
+  }
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>chief_complaint</code></td><td>string</td><td>Patient&rsquo;s symptoms with duration/severity. Semicolon-separated.</td></tr>
+<tr><td><code>diagnosis</code></td><td>string</td><td>Doctor&rsquo;s clinical assessment: conditions, causes, triggers, risk factors, allergies, family history. Semicolon-separated.</td></tr>
+<tr><td><code>medicine</code></td><td>string</td><td>Medications with dosage and frequency. Semicolon-separated.</td></tr>
+<tr><td><code>advice</code></td><td>string</td><td>Lifestyle recommendations, non-medication instructions. Semicolon-separated.</td></tr>
+<tr><td><code>next_steps</code></td><td>string</td><td>Concrete follow-up actions: labs, referrals, follow-ups. Semicolon-separated.</td></tr>
+</table>
+
+<ac:structured-macro ac:name="info">
+  <ac:rich-text-body>
+    <p>All fields default to <code>""</code> (empty string) if nothing has been said yet. Fields are <strong>cumulative</strong> &mdash; each update contains the full merged state, not a delta.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<p><strong>Source:</strong> <code>src/models/websocket_messages.py:29-33</code>, <code>src/models/extraction.py</code></p>
+
+<hr/>
+
+<h4><code>session_stopped</code></h4>
+<p>Acknowledgment that the server processed <code>stop_session</code>.</p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "type": "session_stopped"
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p><strong>Source:</strong> <code>src/websocket_handler.py:87</code></p>
+
+<hr/>
+
+<h4><code>error</code></h4>
+<p>Sent when something goes wrong.</p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">json</ac:parameter>
+  <ac:plain-text-body><![CDATA[{
+  "type": "error",
+  "message": "No active session. Start a session first."
+}]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p>Known error conditions:</p>
+<ul>
+<li><code>audio_chunk</code> sent before <code>start_session</code></li>
+<li>Unknown message <code>type</code></li>
+<li>Transcription/extraction failures</li>
+</ul>
+
+<p><strong>Source:</strong> <code>src/models/websocket_messages.py:36-40</code></p>
+
+<hr/>
+
+<h2>3. Audio Format Specification</h2>
+<p>FE must encode audio as WAV before base64-encoding and sending.</p>
+
+<table>
+<tr><th>Parameter</th><th>Value</th></tr>
+<tr><td>Format</td><td>WAV (RIFF)</td></tr>
+<tr><td>Encoding</td><td>PCM signed 16-bit little-endian</td></tr>
+<tr><td>Sample rate</td><td>16000 Hz (from <code>/api/config</code>)</td></tr>
+<tr><td>Channels</td><td>1 (mono)</td></tr>
+<tr><td>Header size</td><td>44 bytes (standard RIFF/WAV)</td></tr>
+</table>
+
+<p><strong>WAV Header Structure (44 bytes):</strong></p>
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">text</ac:parameter>
+  <ac:plain-text-body><![CDATA[Bytes 0-3:   "RIFF"
+Bytes 4-7:   File size - 8 (uint32 LE)
+Bytes 8-11:  "WAVE"
+Bytes 12-15: "fmt "
+Bytes 16-19: 16 (uint32 LE, subchunk size)
+Bytes 20-21: 1 (uint16 LE, PCM format)
+Bytes 22-23: 1 (uint16 LE, mono)
+Bytes 24-27: 16000 (uint32 LE, sample rate)
+Bytes 28-31: 32000 (uint32 LE, byte rate)
+Bytes 32-33: 2 (uint16 LE, block align)
+Bytes 34-35: 16 (uint16 LE, bits per sample)
+Bytes 36-39: "data"
+Bytes 40-43: Data size in bytes (uint32 LE)
+Bytes 44+:   PCM samples (Int16 LE, 2 bytes each)]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<ac:structured-macro ac:name="note">
+  <ac:rich-text-body>
+    <p><strong>Silent chunk detection:</strong> Backend computes RMS energy on the PCM samples. Chunks with RMS &lt; 200.0 are silently dropped (no transcription, no extraction). FE does not need to handle this.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<hr/>
+
+<h2>4. Session Lifecycle</h2>
+
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">text</ac:parameter>
+  <ac:plain-text-body><![CDATA[FE                                    BE
+|                                      |
++-- GET /api/config -----------------> |  <-- returns audio params
+|                                      |
++-- WS connect to /ws ---------------> |
+|                                      |
++-- {"type":"start_session",...} -----> |  <-- creates session
+|                                      |
+|  +--- RECORDING LOOP -----------+    |
+|  |                               |   |
+|  +-- {"type":"audio_chunk",...} ->+-->|  <-- transcribe + extract
+|  |  (every 7s, mic + tab)       |    |
+|  |                               |   |
+|  |<------------------------------+<--|-- {"type":"extraction_update",...}
+|  |  (throttled: max 1 per 5s)   |   |   (cumulative, not delta)
+|  |                               |   |
+|  +-------------------------------+   |
+|                                      |
++-- {"type":"stop_session"} ---------->|  <-- final extraction + save audio
+|                                      |
+|<---- {"type":"session_stopped"} ----|
+|                                      |
++-- WS close ------------------------> |]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<p><strong>Key behaviors:</strong></p>
+<ul>
+<li>Audio chunks flow in two streams: <code>source: "mic"</code> (doctor) and <code>source: "tab"</code> (patient from Meet)</li>
+<li>Speaker attribution is derived from <code>source</code>: mic &rarr; "Doctor:", tab &rarr; "Patient:"</li>
+<li>Extraction is cumulative &mdash; each <code>extraction_update</code> contains the <strong>full current state</strong>, not a diff</li>
+<li>Extraction is throttled to max 1 per 5 seconds to avoid API rate limits</li>
+<li>On <code>stop_session</code>, a final extraction runs on the full transcript regardless of throttle</li>
+<li>If WS disconnects unexpectedly (no <code>stop_session</code>), the session is cleaned up server-side</li>
+</ul>
+
+<hr/>
+
+<h2>5. Chrome Extension Internal Messages (FE-only, for reference)</h2>
+<p>These are internal to the Chrome extension architecture (content script &harr; background &harr; offscreen). Included for completeness since FE needs to maintain them.</p>
+
+<table>
+<tr><th>Direction</th><th>Type</th><th>Purpose</th></tr>
+<tr><td>Content &rarr; Background</td><td><code>start-session</code></td><td>User clicks start, includes patient data</td></tr>
+<tr><td>Content &rarr; Background</td><td><code>stop-session</code></td><td>User clicks stop</td></tr>
+<tr><td>Background &rarr; Content</td><td><code>session-started</code></td><td>Session opened, includes <code>audioConfig</code></td></tr>
+<tr><td>Background &rarr; Content</td><td><code>session-ended</code></td><td>Session closed</td></tr>
+<tr><td>Background &rarr; Content</td><td><code>extraction_update</code></td><td>Forwarded from WS</td></tr>
+<tr><td>Background &rarr; Content</td><td><code>error</code></td><td>Forwarded from WS</td></tr>
+<tr><td>Offscreen &rarr; Background</td><td><code>audio-chunk</code></td><td>Tab audio captured</td></tr>
+<tr><td>Offscreen &rarr; Background</td><td><code>capture-started</code></td><td>Tab capture began</td></tr>
+<tr><td>Offscreen &rarr; Background</td><td><code>capture-error</code></td><td>Tab capture failed</td></tr>
+<tr><td>Background &rarr; Offscreen</td><td><code>start-capture</code></td><td>Begin tab audio, includes <code>streamId</code> + <code>audioConfig</code></td></tr>
+<tr><td>Background &rarr; Offscreen</td><td><code>stop-capture</code></td><td>End tab audio</td></tr>
+<tr><td>Popup &rarr; Background</td><td><code>get-status</code></td><td>Check if session active</td></tr>
+<tr><td>Popup &rarr; Background</td><td><code>health-check</code></td><td>Check server health</td></tr>
+</table>
+
+<hr/>
+
+<h2>6. Summary: What FE Needs to Implement Against</h2>
+
+<table>
+<tr><th>Contract</th><th>Direction</th><th>Format</th></tr>
+<tr><td><code>GET /api/config</code></td><td>FE &rarr; BE</td><td>REST JSON</td></tr>
+<tr><td><code>GET /health</code></td><td>FE &rarr; BE</td><td>REST JSON</td></tr>
+<tr><td><code>start_session</code></td><td>FE &rarr; BE</td><td>WS JSON</td></tr>
+<tr><td><code>audio_chunk</code></td><td>FE &rarr; BE</td><td>WS JSON (base64 WAV)</td></tr>
+<tr><td><code>stop_session</code></td><td>FE &rarr; BE</td><td>WS JSON</td></tr>
+<tr><td><code>extraction_update</code></td><td>BE &rarr; FE</td><td>WS JSON</td></tr>
+<tr><td><code>session_stopped</code></td><td>BE &rarr; FE</td><td>WS JSON</td></tr>
+<tr><td><code>error</code></td><td>BE &rarr; FE</td><td>WS JSON</td></tr>
+</table>
+
+<p><strong>Source files referenced:</strong></p>
+<ul>
+<li><code>src/websocket_handler.py</code> &mdash; all WS handling</li>
+<li><code>src/models/websocket_messages.py</code> &mdash; message Pydantic models</li>
+<li><code>src/models/extraction.py</code> &mdash; ExtractionResult schema</li>
+<li><code>src/models/patient.py</code> &mdash; Patient validation</li>
+<li><code>src/models/consultation.py</code> &mdash; Session/transcript models</li>
+<li><code>src/main.py</code> &mdash; REST endpoints</li>
+</ul>

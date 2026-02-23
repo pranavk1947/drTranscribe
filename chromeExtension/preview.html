@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>drTranscribe v2 - Live Simulation Preview</title>
+    <title>MedLog - Live Simulation Preview</title>
     <style>
         /* Simulated Google Meet background */
         body {
@@ -41,7 +41,8 @@
             justify-content: center;
             gap: 16px;
             padding: 24px;
-            padding-right: 360px;
+            padding-right: 340px;
+            padding-left: 360px;
         }
         .fake-participant {
             flex: 1;
@@ -87,7 +88,7 @@
             position: fixed;
             bottom: 88px;
             left: 50%;
-            transform: translateX(calc(-50% - 170px));
+            transform: translateX(-50%);
             background: rgba(32, 33, 36, 0.9);
             border-radius: 8px;
             padding: 10px 16px;
@@ -111,7 +112,8 @@
             align-items: center;
             justify-content: center;
             gap: 16px;
-            padding-right: 360px;
+            padding-right: 340px;
+            padding-left: 360px;
         }
         .fake-meet-btn {
             width: 44px; height: 44px;
@@ -128,7 +130,8 @@
         .sim-controls {
             position: fixed;
             bottom: 20px;
-            left: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 999999999;
             display: flex;
             flex-direction: column;
@@ -136,79 +139,76 @@
         }
         .sim-controls button {
             padding: 10px 20px;
-            border: 1px solid #45475a;
+            border: 1px solid #2e3648;
             border-radius: 8px;
-            background: #313244;
-            color: #cdd6f4;
+            background: #1e2430;
+            color: #e0e6f0;
             cursor: pointer;
             font-size: 13px;
             font-weight: 600;
             font-family: inherit;
             transition: all 0.15s;
         }
-        .sim-controls button:hover { background: #45475a; }
+        .sim-controls button:hover { background: #252d3e; }
         .sim-controls button.sim-active {
-            background: #a6e3a1;
-            color: #1e1e2e;
-            border-color: #a6e3a1;
+            background: #c5d952;
+            color: #141820;
+            border-color: #c5d952;
         }
         .sim-controls button.sim-stop {
-            background: #f38ba8;
-            color: #1e1e2e;
-            border-color: #f38ba8;
+            background: #f06070;
+            color: #141820;
+            border-color: #f06070;
         }
         .sim-timer {
             font-size: 12px;
-            color: #6c7086;
+            color: #5a6878;
             text-align: center;
             font-family: monospace;
         }
         .sim-label {
             font-size: 11px;
-            color: #585b70;
+            color: #4a5568;
             text-align: center;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
 
         /* ═══════════════════════════════════════════════════════════
-           ACTUAL EXTENSION CSS (from content.css)
+           ACTUAL EXTENSION CSS (ported from content.css)
            ═══════════════════════════════════════════════════════════ */
 
         /* Badge */
         .drt-badge {
             position: fixed;
-            bottom: 24px;
+            bottom: 80px;
             right: 24px;
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            background: #1e1e2e;
-            border: 2px solid #313244;
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            background: #3d5f5c;
+            border: none;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
-            font-size: 12px;
-            font-weight: 700;
-            color: #89b4fa;
+            padding: 6px;
             cursor: pointer;
             z-index: 2147483646;
-            transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
+            transition: transform 0.15s, box-shadow 0.2s;
             user-select: none;
+            overflow: hidden;
         }
         .drt-badge:hover { transform: scale(1.1); }
         .drt-badge-detected {
-            box-shadow: 0 0 12px rgba(137, 180, 250, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
         .drt-badge-active {
-            border-color: #a6e3a1;
-            box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 16px rgba(197, 217, 82, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
             animation: drt-badge-pulse 2s ease-in-out infinite;
         }
         @keyframes drt-badge-pulse {
-            0%, 100% { box-shadow: 0 0 12px rgba(166, 227, 161, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3); }
-            50% { box-shadow: 0 0 20px rgba(166, 227, 161, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3); }
+            0%, 100% { box-shadow: 0 0 16px rgba(197, 217, 82, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3); }
+            50% { box-shadow: 0 0 24px rgba(197, 217, 82, 0.7), 0 2px 8px rgba(0, 0, 0, 0.3); }
         }
 
         /* Panel */
@@ -216,150 +216,498 @@
             position: fixed;
             top: 80px;
             right: 16px;
-            width: 320px;
+            width: 300px;
             max-height: calc(100vh - 100px);
-            background: #1e1e2e;
-            border: 1px solid #313244;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            background: #141820;
+            border: 1px solid #2a3040;
+            border-radius: 14px;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
             z-index: 2147483647;
             font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
-            font-size: 13px;
-            color: #cdd6f4;
+            font-size: 12px;
+            color: #e0e6f0;
             overflow: hidden;
             display: flex;
             flex-direction: column;
             transition: box-shadow 0.2s;
         }
-        .drt-panel:hover { box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6); }
+        .drt-panel:hover { box-shadow: 0 12px 56px rgba(0, 0, 0, 0.7); }
 
+        /* Header */
         .drt-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 10px 12px;
-            background: #181825;
+            background: #181d28;
             cursor: grab;
             user-select: none;
-            border-bottom: 1px solid #313244;
+            border-bottom: 1px solid #2a3040;
         }
         .drt-header:active { cursor: grabbing; }
-        .drt-brand { display: flex; align-items: center; gap: 8px; }
-        .drt-logo { font-weight: 700; font-size: 16px; color: #89b4fa; letter-spacing: -0.5px; }
-        .drt-status { font-size: 11px; color: #6c7086; padding: 2px 8px; border-radius: 10px; background: #313244; }
-        .drt-status-connecting { color: #f9e2af; background: #433a27; }
-        .drt-status-recording { color: #a6e3a1; background: #273a27; animation: drt-pulse 1.5s ease-in-out infinite; }
-        .drt-status-error { color: #f38ba8; background: #3a2727; }
+        .drt-brand { display: flex; align-items: center; gap: 10px; }
+
+        .drt-logo-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #1e2430;
+            border: 2px solid #5a6a4a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 13px;
+            color: #c5d952;
+            flex-shrink: 0;
+        }
+
+        .drt-logo { font-weight: 700; font-size: 15px; color: #f0f4ff; letter-spacing: -0.3px; }
+
+        .drt-status {
+            font-size: 11px;
+            font-weight: 600;
+            color: #c5d952;
+            padding: 3px 10px;
+            border-radius: 12px;
+            background: rgba(197, 217, 82, 0.15);
+            white-space: nowrap;
+        }
+        .drt-status::before {
+            content: '\25CF';
+            margin-right: 4px;
+            font-size: 8px;
+        }
+        .drt-status-connecting { color: #f9e2af; background: rgba(249, 226, 175, 0.12); }
+        .drt-status-recording { color: #c5d952; background: rgba(197, 217, 82, 0.15); animation: drt-pulse 1.5s ease-in-out infinite; }
+        .drt-status-error { color: #f38ba8; background: rgba(243, 139, 168, 0.12); }
         @keyframes drt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
         .drt-controls { display: flex; gap: 4px; }
         .drt-btn-icon {
-            background: none; border: none; color: #6c7086; cursor: pointer;
-            padding: 4px 6px; border-radius: 6px; font-size: 12px; line-height: 1;
+            background: #232a38; border: 1px solid #2e3648; color: #8090a8; cursor: pointer;
+            padding: 6px 10px; border-radius: 8px; font-size: 13px; line-height: 1;
             transition: background 0.15s, color 0.15s;
         }
-        .drt-btn-icon:hover { background: #313244; color: #cdd6f4; }
+        .drt-btn-icon:hover { background: #2e3648; color: #e0e6f0; }
 
+        /* Body */
         .drt-body {
-            overflow-y: auto; max-height: calc(100vh - 160px); padding: 12px;
-            display: flex; flex-direction: column; gap: 12px;
+            overflow-y: auto; flex: 1; padding: 10px;
+            display: flex; flex-direction: column; gap: 10px;
         }
         .drt-body::-webkit-scrollbar { width: 4px; }
         .drt-body::-webkit-scrollbar-track { background: transparent; }
-        .drt-body::-webkit-scrollbar-thumb { background: #45475a; border-radius: 2px; }
+        .drt-body::-webkit-scrollbar-thumb { background: #2e3648; border-radius: 2px; }
 
+        /* Patient Display */
+        .drt-patient-display {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #232a38;
+        }
+        .drt-patient-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: #1e2430;
+            border: 2px solid #5a6a4a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 13px;
+            color: #c5d952;
+            flex-shrink: 0;
+        }
+        .drt-patient-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .drt-patient-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f0f4ff;
+        }
+        .drt-patient-meta {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .drt-patient-tag {
+            font-size: 10px;
+            font-weight: 500;
+            color: #8090a8;
+            background: #232a38;
+            padding: 2px 8px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+
+        /* Patient Form */
         .drt-section-title {
             font-size: 11px; font-weight: 600; text-transform: uppercase;
-            letter-spacing: 0.5px; color: #6c7086; margin-bottom: 8px;
+            letter-spacing: 0.5px; color: #6c7a8e; margin-bottom: 8px;
         }
         .drt-form-row { margin-bottom: 8px; }
         .drt-form-row-split { display: flex; gap: 8px; }
         .drt-input {
-            width: 100%; padding: 8px 10px; background: #313244;
-            border: 1px solid #45475a; border-radius: 8px; color: #cdd6f4;
+            width: 100%; padding: 10px 12px; background: #1e2430;
+            border: 1px solid #2e3648; border-radius: 10px; color: #e0e6f0;
             font-size: 13px; font-family: inherit; outline: none;
             transition: border-color 0.15s; box-sizing: border-box;
         }
-        .drt-input:focus { border-color: #89b4fa; }
-        .drt-input:disabled { opacity: 0.5; cursor: not-allowed; }
+        .drt-input:focus { border-color: #c5d952; box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.08); }
+        .drt-input:disabled { opacity: 0.4; cursor: not-allowed; }
         .drt-input-small { width: 80px; flex-shrink: 0; }
-        .drt-input option { background: #313244; color: #cdd6f4; }
-        .drt-form-actions { display: flex; gap: 8px; }
-        .drt-btn {
-            flex: 1; padding: 8px 12px; border: none; border-radius: 8px;
-            font-size: 13px; font-weight: 600; font-family: inherit;
-            cursor: pointer; transition: background 0.15s, opacity 0.15s;
-        }
-        .drt-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .drt-btn-start { background: #89b4fa; color: #1e1e2e; }
-        .drt-btn-start:hover:not(:disabled) { background: #74a8fc; }
-        .drt-btn-stop { background: #f38ba8; color: #1e1e2e; }
-        .drt-btn-stop:hover:not(:disabled) { background: #f07090; }
+        .drt-input option { background: #1e2430; color: #e0e6f0; }
 
-        .drt-results { display: flex; flex-direction: column; gap: 8px; }
-        .drt-card {
-            background: #181825; border: 1px solid #313244; border-radius: 8px;
-            padding: 10px 12px; transition: border-color 0.2s, background 0.3s;
+        /* Session Controls */
+        .drt-session-controls { display: flex; gap: 8px; }
+        .drt-btn {
+            flex: 1; padding: 9px 12px; border: none; border-radius: 10px;
+            font-size: 12px; font-weight: 700; font-family: inherit;
+            cursor: pointer; transition: all 0.15s; letter-spacing: 0.2px;
         }
-        .drt-card:hover { border-color: #45475a; }
-        .drt-card.drt-card-updating {
-            background: #1a1a2e;
-            border-color: #89b4fa40;
+        .drt-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+        .drt-btn-start { background: #c5d952; color: #141820; }
+        .drt-btn-start:hover:not(:disabled) { background: #d4e65e; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(197, 217, 82, 0.3); }
+        .drt-btn-stop { background: #2a1520; color: #f06070; border: 1px solid #3a2030; }
+        .drt-btn-stop:hover:not(:disabled) { background: #351a28; border-color: #4a2838; }
+
+        /* Result Cards */
+        .drt-results { display: flex; flex-direction: column; gap: 6px; }
+        .drt-card {
+            background: #1a2030; border: 1px solid #252d3e; border-radius: 10px;
+            padding: 10px 12px; border-left: 3px solid #2e3648;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .drt-card:hover { background: #1e2538; }
+
+        /* Card accent colors */
+        .drt-card-chief { border-left-color: #c5d952; }
+        .drt-card-diagnosis { border-left-color: #ff6b8a; }
+        .drt-card-medicine { border-left-color: #f0a030; }
+        .drt-card-advice { border-left-color: #39d2c0; }
+        .drt-card-nextsteps { border-left-color: #bc8cff; }
+
+        .drt-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .drt-card-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            background: #232a38;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
         }
         .drt-card-title {
-            font-size: 11px; font-weight: 600; text-transform: uppercase;
-            letter-spacing: 0.5px; color: #89b4fa; margin-bottom: 4px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.6px; flex: 1;
         }
+        /* Card title colors matching accent */
+        .drt-card-chief .drt-card-title { color: #c5d952; }
+        .drt-card-diagnosis .drt-card-title { color: #ff6b8a; }
+        .drt-card-medicine .drt-card-title { color: #f0a030; }
+        .drt-card-advice .drt-card-title { color: #39d2c0; }
+        .drt-card-nextsteps .drt-card-title { color: #bc8cff; }
+
+        .drt-card-badge {
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #5a6878;
+            white-space: nowrap;
+        }
+        .drt-card-badge.drt-badge-updated {
+            color: #c5d952;
+        }
+
         .drt-card-content {
-            font-size: 13px; line-height: 1.5; color: #cdd6f4;
+            font-size: 12px; line-height: 1.5; color: #c0c8d8;
             white-space: pre-wrap; word-break: break-word;
         }
-        .drt-card-content.drt-empty { color: #585b70; font-style: italic; }
+        .drt-card-content.drt-empty { color: #4a5568; font-style: italic; }
+
+        .drt-card.drt-card-updating {
+            background: #1e2538;
+            border-color: rgba(197, 217, 82, 0.25);
+        }
 
         /* Post-session styles */
         .drt-card-textarea {
-            width: 100%; min-height: 60px; padding: 8px 10px;
-            background: #313244; border: 1px solid #45475a; border-radius: 6px;
-            color: #cdd6f4; font-size: 13px; font-family: inherit;
+            width: 100%; min-height: 60px; padding: 10px 12px;
+            background: #1e2430; border: 1px solid #2e3648; border-radius: 8px;
+            color: #e0e6f0; font-size: 13px; font-family: inherit;
             line-height: 1.5; outline: none; resize: vertical;
             box-sizing: border-box; transition: border-color 0.15s;
         }
-        .drt-card-textarea:focus { border-color: #89b4fa; }
-        .drt-card-textarea::placeholder { color: #585b70; font-style: italic; }
+        .drt-card-textarea:focus { border-color: #c5d952; box-shadow: 0 0 0 3px rgba(197, 217, 82, 0.08); }
+        .drt-card-textarea::placeholder { color: #4a5568; font-style: italic; }
 
         .drt-export-bar {
-            padding-top: 12px; margin-top: 4px;
-            border-top: 1px solid #313244;
+            padding-top: 14px; margin-top: 4px;
+            border-top: 1px solid #232a38;
         }
         .drt-export-actions {
             display: grid; grid-template-columns: 1fr 1fr;
             gap: 6px; margin-bottom: 8px;
         }
         .drt-btn-export {
-            padding: 8px 10px; background: #313244; border: 1px solid #45475a;
-            border-radius: 8px; color: #cdd6f4; font-size: 12px; font-weight: 600;
+            padding: 10px 12px; background: #1e2430; border: 1px solid #2e3648;
+            border-radius: 10px; color: #c0c8d8; font-size: 12px; font-weight: 600;
             font-family: inherit; cursor: pointer;
             transition: background 0.15s, border-color 0.15s; text-align: center;
         }
-        .drt-btn-export:hover { background: #45475a; border-color: #585b70; }
+        .drt-btn-export:hover { background: #252d3e; border-color: #3a4458; }
         .drt-btn-export-primary {
-            background: #89b4fa; color: #1e1e2e; border-color: #89b4fa;
+            background: #c5d952; color: #141820; border-color: #c5d952; font-weight: 700;
         }
-        .drt-btn-export-primary:hover { background: #74a8fc; border-color: #74a8fc; }
+        .drt-btn-export-primary:hover { background: #d4e65e; border-color: #d4e65e; }
 
         .drt-btn-new-session {
-            width: 100%; padding: 8px 12px; background: transparent;
-            border: 1px dashed #45475a; border-radius: 8px; color: #6c7086;
+            width: 100%; padding: 10px 12px; background: transparent;
+            border: 1px dashed #2e3648; border-radius: 10px; color: #6c7a8e;
             font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
         }
         .drt-btn-new-session:hover {
-            background: #313244; color: #cdd6f4; border-color: #585b70;
+            background: #1e2430; color: #e0e6f0; border-color: #3a4458;
         }
 
+        /* Footer */
+        .drt-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: #181d28;
+            border-top: 1px solid #2a3040;
+            font-size: 10px;
+            color: #4a5568;
+        }
+        .drt-footer-version { color: #4a5568; }
+        .drt-footer-status { color: #5a6878; font-weight: 600; }
+        .drt-footer-recording { color: #c5d952; animation: drt-pulse 1.5s ease-in-out infinite; }
+
+        /* ═══════════════════════════════════════════════════════════
+           EMR PANEL (Left Side)
+           ═══════════════════════════════════════════════════════════ */
+
+        .emr-panel {
+            position: fixed;
+            top: 80px;
+            left: 16px;
+            width: 340px;
+            max-height: calc(100vh - 100px);
+            background: #141820;
+            border: 1px solid #2a3040;
+            border-radius: 14px;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+            z-index: 2147483645;
+            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+            font-size: 12px;
+            color: #e0e6f0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .emr-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #181d28;
+            border-bottom: 1px solid #2a3040;
+        }
+        .emr-panel-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .emr-panel-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: #1e2430;
+            border: 1px solid #2e3648;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .emr-panel-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: #f0f4ff;
+        }
+        .emr-panel-status {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 12px;
+            background: rgba(90, 104, 120, 0.2);
+            color: #5a6878;
+            white-space: nowrap;
+        }
+        .emr-panel-status.emr-status-active {
+            background: rgba(197, 217, 82, 0.15);
+            color: #c5d952;
+            animation: drt-pulse 1.5s ease-in-out infinite;
+        }
+        .emr-panel-status.emr-status-received {
+            background: rgba(57, 210, 192, 0.15);
+            color: #39d2c0;
+        }
+        .emr-panel-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .emr-panel-body::-webkit-scrollbar { width: 4px; }
+        .emr-panel-body::-webkit-scrollbar-track { background: transparent; }
+        .emr-panel-body::-webkit-scrollbar-thumb { background: #2e3648; border-radius: 2px; }
+
+        .emr-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6c7a8e;
+            margin-bottom: 6px;
+        }
+        .emr-form-row {
+            margin-bottom: 8px;
+        }
+        .emr-form-row-split {
+            display: flex;
+            gap: 8px;
+        }
+        .emr-input {
+            width: 100%;
+            padding: 8px 10px;
+            background: #1e2430;
+            border: 1px solid #2e3648;
+            border-radius: 8px;
+            color: #e0e6f0;
+            font-size: 12px;
+            font-family: inherit;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .emr-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .emr-input-small { width: 80px; flex-shrink: 0; }
+        .emr-input option { background: #1e2430; color: #e0e6f0; }
+        .emr-textarea {
+            width: 100%;
+            padding: 8px 10px;
+            background: #1e2430;
+            border: 1px solid #2e3648;
+            border-radius: 8px;
+            color: #e0e6f0;
+            font-size: 12px;
+            font-family: inherit;
+            outline: none;
+            resize: vertical;
+            box-sizing: border-box;
+            line-height: 1.4;
+        }
+        .emr-textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .emr-btn-start {
+            width: 100%;
+            padding: 10px 12px;
+            background: #c5d952;
+            color: #141820;
+            border: none;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .emr-btn-start:hover:not(:disabled) {
+            background: #d4e65e;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(197, 217, 82, 0.3);
+        }
+        .emr-btn-start:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        /* EMR Result Cards */
+        .emr-results { display: flex; flex-direction: column; gap: 6px; }
+        .emr-result-card {
+            background: #1a2030;
+            border: 1px solid #252d3e;
+            border-radius: 8px;
+            padding: 8px 10px;
+            border-left: 3px solid #2e3648;
+        }
+        .emr-result-card-chief { border-left-color: #c5d952; }
+        .emr-result-card-diagnosis { border-left-color: #ff6b8a; }
+        .emr-result-card-medicine { border-left-color: #f0a030; }
+        .emr-result-card-advice { border-left-color: #39d2c0; }
+        .emr-result-card-nextsteps { border-left-color: #bc8cff; }
+
+        .emr-result-title {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6c7a8e;
+            margin-bottom: 4px;
+        }
+        .emr-result-content {
+            font-size: 12px;
+            line-height: 1.4;
+            color: #c0c8d8;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .emr-result-content.emr-empty {
+            color: #4a5568;
+            font-style: italic;
+        }
+        .emr-waiting-message {
+            text-align: center;
+            padding: 20px 12px;
+            color: #5a6878;
+            font-style: italic;
+            font-size: 12px;
+        }
+        .emr-footer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 12px;
+            background: #181d28;
+            border-top: 1px solid #2a3040;
+            font-size: 10px;
+            color: #4a5568;
+        }
+
+        /* Toast */
         .drt-toast {
             position: fixed; bottom: 80px; right: 24px;
-            padding: 10px 20px; background: #313244; border: 1px solid #45475a;
-            border-radius: 8px; color: #cdd6f4;
+            padding: 12px 20px; background: #232a38; border: 1px solid #2e3648;
+            border-radius: 10px; color: #e0e6f0;
             font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
             font-size: 13px; font-weight: 500; z-index: 2147483647;
             opacity: 0; transform: translateY(10px);
@@ -373,6 +721,108 @@
     </style>
 </head>
 <body>
+
+    <!-- EMR Panel (Left Side) -->
+    <div class="emr-panel" id="emr-panel">
+        <div class="emr-panel-header">
+            <div class="emr-panel-brand">
+                <div class="emr-panel-icon">&#x1F3E5;</div>
+                <span class="emr-panel-title">EMR System</span>
+            </div>
+            <span class="emr-panel-status" id="emr-status">Ready</span>
+        </div>
+
+        <div class="emr-panel-body" id="emr-body">
+            <!-- EMR Form (pre-session) -->
+            <div id="emr-form-section">
+                <div class="emr-section-title">New Consultation</div>
+                <div class="emr-form-row">
+                    <input type="text" id="emr-appointment-id" class="emr-input" placeholder="Appointment ID" value="APT-2024-001" />
+                </div>
+                <div class="emr-form-row">
+                    <input type="text" id="emr-patient-name" class="emr-input" placeholder="Patient Name" />
+                </div>
+                <div class="emr-form-row emr-form-row-split">
+                    <input type="number" id="emr-patient-age" class="emr-input emr-input-small" placeholder="Age" />
+                    <select id="emr-patient-gender" class="emr-input">
+                        <option value="" disabled selected>Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="emr-form-row">
+                    <textarea id="emr-patient-history" class="emr-textarea" placeholder="Patient medical history..." rows="3"></textarea>
+                </div>
+                <div class="emr-form-row">
+                    <input type="text" id="emr-gmeet-link" class="emr-input" placeholder="Google Meet Link" value="https://meet.google.com/rxj-knwb-yzm" />
+                </div>
+                <button class="emr-btn-start" id="emr-start-btn">Start Consult</button>
+            </div>
+
+            <!-- EMR Waiting State (during session) -->
+            <div id="emr-waiting-section" style="display: none;">
+                <div class="emr-section-title">Active Session</div>
+                <div class="drt-patient-display" style="display: flex;">
+                    <div class="drt-patient-avatar" id="emr-patient-avatar">RS</div>
+                    <div class="drt-patient-details">
+                        <div class="drt-patient-name" id="emr-patient-name-display">Rahul Sharma</div>
+                        <div class="drt-patient-meta">
+                            <span class="drt-patient-tag" id="emr-patient-age-tag">45 yrs</span>
+                            <span class="drt-patient-tag" id="emr-patient-gender-tag">Male</span>
+                            <span class="drt-patient-tag" id="emr-appt-tag">APT-2024-001</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="emr-waiting-message" id="emr-waiting-msg">
+                    Recording in progress in Google Meet...<br>
+                    Waiting for consultation to end.
+                </div>
+            </div>
+
+            <!-- EMR Results (post-export) -->
+            <div id="emr-results-section" style="display: none;">
+                <div class="emr-section-title">Received Results</div>
+                <div class="drt-patient-display" style="display: flex;">
+                    <div class="drt-patient-avatar">RS</div>
+                    <div class="drt-patient-details">
+                        <div class="drt-patient-name">Rahul Sharma</div>
+                        <div class="drt-patient-meta">
+                            <span class="drt-patient-tag">45 yrs</span>
+                            <span class="drt-patient-tag">Male</span>
+                            <span class="drt-patient-tag">APT-2024-001</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="emr-results" id="emr-results">
+                    <div class="emr-result-card emr-result-card-chief">
+                        <div class="emr-result-title">Chief Complaint</div>
+                        <div class="emr-result-content emr-empty" id="emr-res-chief">--</div>
+                    </div>
+                    <div class="emr-result-card emr-result-card-diagnosis">
+                        <div class="emr-result-title">Diagnosis</div>
+                        <div class="emr-result-content emr-empty" id="emr-res-diagnosis">--</div>
+                    </div>
+                    <div class="emr-result-card emr-result-card-medicine">
+                        <div class="emr-result-title">Medicine</div>
+                        <div class="emr-result-content emr-empty" id="emr-res-medicine">--</div>
+                    </div>
+                    <div class="emr-result-card emr-result-card-advice">
+                        <div class="emr-result-title">Advice</div>
+                        <div class="emr-result-content emr-empty" id="emr-res-advice">--</div>
+                    </div>
+                    <div class="emr-result-card emr-result-card-nextsteps">
+                        <div class="emr-result-title">Next Steps</div>
+                        <div class="emr-result-content emr-empty" id="emr-res-nextsteps">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="emr-footer">
+            EMR Demo &middot; Integrated with MedLog
+        </div>
+    </div>
 
     <!-- Simulated Google Meet -->
     <div class="fake-meet">
@@ -406,14 +856,17 @@
     <!-- Live conversation subtitle -->
     <div class="fake-transcript" id="transcript-bar"></div>
 
-    <!-- ═══ drTranscribe BADGE ═══ -->
-    <div class="drt-badge drt-badge-detected" id="drt-badge" title="drTranscribe - Click to open">drT</div>
+    <!-- MedLog BADGE -->
+    <div class="drt-badge drt-badge-detected" id="drt-badge" title="MedLog - Click to open">
+        <div class="drt-logo-icon" style="width:32px;height:32px;font-size:15px;border:none;background:transparent;color:#c5d952;">M</div>
+    </div>
 
-    <!-- ═══ drTranscribe PANEL (initially hidden) ═══ -->
+    <!-- MedLog PANEL (initially hidden) -->
     <div class="drt-panel" id="drt-panel" style="display: none;">
         <div class="drt-header" id="drt-header">
             <div class="drt-brand">
-                <span class="drt-logo">drT</span>
+                <div class="drt-logo-icon">M</div>
+                <span class="drt-logo">MedLog</span>
                 <span class="drt-status" id="drt-status">Ready</span>
             </div>
             <div class="drt-controls">
@@ -421,8 +874,22 @@
                 <button class="drt-btn-icon" id="drt-close" title="Close">&#x2715;</button>
             </div>
         </div>
+
         <div class="drt-body" id="drt-body">
-            <div class="drt-section drt-patient-form">
+            <!-- Compact patient display (shown during/after session) -->
+            <div id="drt-patient-display" class="drt-patient-display" style="display: none;">
+                <div class="drt-patient-avatar" id="drt-patient-avatar">RS</div>
+                <div class="drt-patient-details">
+                    <div class="drt-patient-name" id="drt-patient-name-display">Rahul Sharma</div>
+                    <div class="drt-patient-meta">
+                        <span class="drt-patient-tag" id="drt-patient-age-tag">45 yrs</span>
+                        <span class="drt-patient-tag" id="drt-patient-gender-tag">Male</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Full patient form (shown pre-session) -->
+            <div id="drt-patient-form-section" class="drt-section drt-patient-form">
                 <div class="drt-section-title">Patient Info</div>
                 <div class="drt-form-row">
                     <input type="text" id="drt-patient-name" class="drt-input" placeholder="Patient Name" />
@@ -436,33 +903,61 @@
                         <option value="Other">Other</option>
                     </select>
                 </div>
-                <div class="drt-form-row drt-form-actions" id="drt-session-actions">
-                    <button id="drt-start-btn" class="drt-btn drt-btn-start">Start Session</button>
-                    <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>Stop</button>
+            </div>
+
+            <!-- Session controls -->
+            <div class="drt-session-controls" id="drt-session-actions">
+                <button id="drt-start-btn" class="drt-btn drt-btn-start">&#x25B6; Start Session</button>
+                <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>&#x25A0; End Session</button>
+            </div>
+
+            <div class="drt-results" id="drt-results">
+                <div class="drt-card drt-card-chief" id="card-chief">
+                    <div class="drt-card-header">
+                        <span class="drt-card-icon">&#x1FA7A;</span>
+                        <span class="drt-card-title">Chief Complaint</span>
+                        <span class="drt-card-badge" id="drt-badge-chief-complaint">PENDING</span>
+                    </div>
+                    <div class="drt-card-content drt-empty" id="drt-chief-complaint">Waiting for session to begin...</div>
+                </div>
+                <div class="drt-card drt-card-diagnosis" id="card-diagnosis">
+                    <div class="drt-card-header">
+                        <span class="drt-card-icon">&#x1F4CB;</span>
+                        <span class="drt-card-title">Diagnosis</span>
+                        <span class="drt-card-badge" id="drt-badge-diagnosis">PENDING</span>
+                    </div>
+                    <div class="drt-card-content drt-empty" id="drt-diagnosis">Waiting for session to begin...</div>
+                </div>
+                <div class="drt-card drt-card-medicine" id="card-medicine">
+                    <div class="drt-card-header">
+                        <span class="drt-card-icon">&#x1F48A;</span>
+                        <span class="drt-card-title">Medicine</span>
+                        <span class="drt-card-badge" id="drt-badge-medicine">PENDING</span>
+                    </div>
+                    <div class="drt-card-content drt-empty" id="drt-medicine">Waiting for session to begin...</div>
+                </div>
+                <div class="drt-card drt-card-advice" id="card-advice">
+                    <div class="drt-card-header">
+                        <span class="drt-card-icon">&#x1F4AC;</span>
+                        <span class="drt-card-title">Advice</span>
+                        <span class="drt-card-badge" id="drt-badge-advice">PENDING</span>
+                    </div>
+                    <div class="drt-card-content drt-empty" id="drt-advice">Waiting for session to begin...</div>
+                </div>
+                <div class="drt-card drt-card-nextsteps" id="card-nextsteps">
+                    <div class="drt-card-header">
+                        <span class="drt-card-icon">&#x27A1;</span>
+                        <span class="drt-card-title">Next Steps</span>
+                        <span class="drt-card-badge" id="drt-badge-next-steps">PENDING</span>
+                    </div>
+                    <div class="drt-card-content drt-empty" id="drt-next-steps">Waiting for session to begin...</div>
                 </div>
             </div>
-            <div class="drt-section drt-results" id="drt-results">
-                <div class="drt-card" id="card-chief">
-                    <div class="drt-card-title">Chief Complaint</div>
-                    <div class="drt-card-content drt-empty" id="drt-chief-complaint">Waiting for session...</div>
-                </div>
-                <div class="drt-card" id="card-diagnosis">
-                    <div class="drt-card-title">Diagnosis</div>
-                    <div class="drt-card-content drt-empty" id="drt-diagnosis">Waiting for session...</div>
-                </div>
-                <div class="drt-card" id="card-medicine">
-                    <div class="drt-card-title">Medicine</div>
-                    <div class="drt-card-content drt-empty" id="drt-medicine">Waiting for session...</div>
-                </div>
-                <div class="drt-card" id="card-advice">
-                    <div class="drt-card-title">Advice</div>
-                    <div class="drt-card-content drt-empty" id="drt-advice">Waiting for session...</div>
-                </div>
-                <div class="drt-card" id="card-nextsteps">
-                    <div class="drt-card-title">Next Steps</div>
-                    <div class="drt-card-content drt-empty" id="drt-next-steps">Waiting for session...</div>
-                </div>
-            </div>
+        </div>
+
+        <div class="drt-footer">
+            <span class="drt-footer-version">MedLog v2.1 &middot; HIPAA Compliant</span>
+            <span class="drt-footer-status" id="drt-footer-status">&#x25CF; Not Recording</span>
         </div>
     </div>
 
@@ -471,7 +966,7 @@
 
     <!-- Simulation controls -->
     <div class="sim-controls">
-        <div class="sim-label">Simulation v2</div>
+        <div class="sim-label">EMR + MedLog Demo</div>
         <button id="sim-btn" onclick="toggleSimulation()">Play Full Demo</button>
         <button onclick="resetAll()">Reset</button>
         <div class="sim-timer" id="sim-timer"></div>
@@ -522,7 +1017,7 @@
             for (const key of PREVIEW_FIELD_KEYS) {
                 if (data[key]) { lines.push(PREVIEW_FIELD_LABELS[key].toUpperCase(), thin, data[key], ''); }
             }
-            lines.push(sep, 'Generated by drTranscribe');
+            lines.push(sep, 'Generated by MedLog');
             return lines.join('\n');
         }
 
@@ -530,7 +1025,6 @@
             const jsPDF = window.jspdf && window.jspdf.jsPDF;
             if (!jsPDF) {
                 showToast('PDF library loading... try again in a moment');
-                // Try loading again
                 const s = document.createElement('script');
                 s.src = 'jspdf.umd.min.js';
                 document.head.appendChild(s);
@@ -574,7 +1068,7 @@
                 y = writeWrap(val, m, y, cw, 5); y += 6;
             }
             doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
-            doc.text('Generated by drTranscribe | ' + previewTimestamp(), m, ph - 10);
+            doc.text('Generated by MedLog | ' + previewTimestamp(), m, ph - 10);
             const safeName = (patient.name || 'patient').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
             doc.save('prescription_' + safeName + '_' + date.replace(/\s/g, '-') + '.pdf');
         }
@@ -610,6 +1104,9 @@
         const badge = document.getElementById('drt-badge');
         const panel = document.getElementById('drt-panel');
         const sessionActions = document.getElementById('drt-session-actions');
+        const patientDisplay = document.getElementById('drt-patient-display');
+        const patientFormSection = document.getElementById('drt-patient-form-section');
+        const footerStatus = document.getElementById('drt-footer-status');
 
         // ─── Badge click -> toggle panel ────────────────────────
         badge.addEventListener('click', () => {
@@ -644,6 +1141,7 @@
         document.getElementById('drt-collapse').addEventListener('click', () => {
             isCollapsed = !isCollapsed;
             bodyEl.style.display = isCollapsed ? 'none' : '';
+            document.querySelector('.drt-footer').style.display = isCollapsed ? 'none' : '';
             document.getElementById('drt-collapse').innerHTML = isCollapsed ? '&#x2B1C;' : '&#x2015;';
         });
 
@@ -788,34 +1286,49 @@
             simBtn.textContent = 'Stop Simulation';
             simBtn.classList.add('sim-stop');
 
-            // Phase 1: Badge pulses for 1.5s, then panel opens
+            // Phase 0: EMR form fills (0-1.5s)
+            simTimeouts.push(setTimeout(() => {
+                emrFillForm();
+            }, 500));
+
+            // Phase 0.5: EMR "Start Consult" clicked (1.5s)
+            simTimeouts.push(setTimeout(() => {
+                emrDisableForm();
+                emrSetStatus('Connecting...', '');
+            }, 1500));
+
+            // Phase 0.7: EMR transitions to waiting, MedLog badge appears (2s)
+            simTimeouts.push(setTimeout(() => {
+                emrShowWaiting();
+            }, 2000));
+
+            // Phase 1: Badge pulses, then panel opens (2.5s)
             simTimeouts.push(setTimeout(() => {
                 // Open panel
                 panel.style.display = 'flex';
 
-                // Pre-fill patient info after 0.5s
-                simTimeouts.push(setTimeout(() => {
-                    nameInput.value = 'Rahul Sharma';
-                    ageInput.value = '45';
-                    genderInput.value = 'Male';
-                }, 500));
+                // Show patient display immediately (data came from EMR)
+                patientDisplay.style.display = 'flex';
+                patientFormSection.style.display = 'none';
+                document.getElementById('drt-patient-avatar').textContent = 'RS';
+                document.getElementById('drt-patient-name-display').textContent = 'Rahul Sharma';
+                document.getElementById('drt-patient-age-tag').textContent = '45 yrs';
+                document.getElementById('drt-patient-gender-tag').textContent = 'Male';
 
-                // Start connecting after 1.5s
+                // Start connecting after 0.5s
                 simTimeouts.push(setTimeout(() => {
                     setStatus('Connecting...', 'connecting');
-                    nameInput.disabled = true;
-                    ageInput.disabled = true;
-                    genderInput.disabled = true;
                     startBtn.disabled = true;
-                }, 1500));
+                }, 500));
 
-                // Start recording after 3s
+                // Start recording after 1.5s (relative to panel open)
                 simTimeouts.push(setTimeout(() => {
                     sessionPhase = 'recording';
                     setStatus('Recording', 'recording');
                     stopBtn.disabled = false;
                     badge.classList.remove('drt-badge-detected');
                     badge.classList.add('drt-badge-active');
+
                     simElapsed = 0;
 
                     // Start timer
@@ -853,8 +1366,8 @@
                         transitionToPostSession();
                     }, (lastTime + 5) * 1000));
 
-                }, 3000));
-            }, 1500));
+                }, 1500));
+            }, 2500));
         }
 
         function transitionToPostSession() {
@@ -863,6 +1376,13 @@
             stopBtn.disabled = true;
             badge.classList.remove('drt-badge-active');
             badge.classList.add('drt-badge-detected');
+
+            // Update EMR waiting message
+            const emrWaitingMsg = document.getElementById('emr-waiting-msg');
+            if (emrWaitingMsg) {
+                emrWaitingMsg.innerHTML = 'Session complete.<br>Click "Export to EMR" in MedLog panel to receive results.';
+            }
+            emrSetStatus('Waiting', '');
 
             // Hide session actions
             sessionActions.style.display = 'none';
@@ -897,7 +1417,8 @@
             exportBar.innerHTML = `
                 <div class="drt-section-title">Export</div>
                 <div class="drt-export-actions">
-                    <button class="drt-btn-export drt-btn-export-primary" id="drt-export-pdf">Export PDF</button>
+                    <button class="drt-btn-export drt-btn-export-primary" id="drt-export-emr" style="grid-column: 1 / -1;">Export to EMR</button>
+                    <button class="drt-btn-export" id="drt-export-pdf">Export PDF</button>
                     <button class="drt-btn-export" id="drt-export-email">Open in Gmail</button>
                     <button class="drt-btn-export" id="drt-export-clipboard">Copy to Clipboard</button>
                     <button class="drt-btn-export" id="drt-export-txt">Download TXT</button>
@@ -909,6 +1430,10 @@
             // Wire export buttons using inline helpers
             const currentPatient = { name: 'Rahul Sharma', age: 45, gender: 'Male' };
 
+            document.getElementById('drt-export-emr').addEventListener('click', () => {
+                exportToEMRPanel();
+                showToast('Results exported to EMR!');
+            });
             document.getElementById('drt-export-pdf').addEventListener('click', () => {
                 previewExportPDF(currentPatient, {
                     doctorName: 'Dr. Priya Mehta',
@@ -960,12 +1485,26 @@
                 const div = document.createElement('div');
                 div.id = id;
                 div.className = 'drt-card-content drt-empty';
-                div.textContent = 'Waiting for session...';
+                div.textContent = 'Waiting for session to begin...';
                 textarea.parentNode.replaceChild(div, textarea);
+            }
+
+            // Reset all card badges to PENDING
+            const badgeIds = ['drt-badge-chief-complaint', 'drt-badge-diagnosis', 'drt-badge-medicine', 'drt-badge-advice', 'drt-badge-next-steps'];
+            for (const id of badgeIds) {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = 'PENDING';
+                    el.classList.remove('drt-badge-updated');
+                }
             }
 
             const exportBar = document.getElementById('drt-export-bar');
             if (exportBar) exportBar.remove();
+
+            // Show form, hide patient display
+            patientFormSection.style.display = '';
+            patientDisplay.style.display = 'none';
 
             sessionActions.style.display = '';
             setStatus('Ready', '');
@@ -979,6 +1518,9 @@
             genderInput.value = '';
             simTimer.textContent = '';
             meetTime.textContent = '0:00';
+
+            // Reset EMR panel
+            emrResetAll();
         }
 
         function stopSimulation() {
@@ -1017,19 +1559,46 @@
             badge.classList.remove('drt-badge-active');
             badge.classList.add('drt-badge-detected');
 
+            // Show form, hide patient display
+            patientFormSection.style.display = '';
+            patientDisplay.style.display = 'none';
+
+            // Reset card content
             document.querySelectorAll('.drt-card-content').forEach(el => {
-                el.textContent = 'Waiting for session...';
+                el.textContent = 'Waiting for session to begin...';
                 el.className = 'drt-card-content drt-empty';
             });
             document.querySelectorAll('.drt-card').forEach(el => {
                 el.classList.remove('drt-card-updating');
             });
+
+            // Reset all card badges to PENDING
+            const badgeIds = ['drt-badge-chief-complaint', 'drt-badge-diagnosis', 'drt-badge-medicine', 'drt-badge-advice', 'drt-badge-next-steps'];
+            for (const id of badgeIds) {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = 'PENDING';
+                    el.classList.remove('drt-badge-updated');
+                }
+            }
+
+            // Reset EMR panel
+            emrResetAll();
         }
 
         function setStatus(text, state) {
             statusEl.textContent = text;
             statusEl.className = 'drt-status';
             if (state) statusEl.classList.add('drt-status-' + state);
+
+            // Update footer status
+            if (state === 'recording') {
+                footerStatus.textContent = '\u25CF Recording';
+                footerStatus.className = 'drt-footer-status drt-footer-recording';
+            } else {
+                footerStatus.textContent = '\u25CF Not Recording';
+                footerStatus.className = 'drt-footer-status';
+            }
         }
 
         function showDialogue(speaker, text) {
@@ -1046,21 +1615,28 @@
 
         function updateCards(extraction, updatedCardIds) {
             const mapping = {
-                chief_complaint: { el: 'drt-chief-complaint', card: 'card-chief' },
-                diagnosis:       { el: 'drt-diagnosis',        card: 'card-diagnosis' },
-                medicine:        { el: 'drt-medicine',         card: 'card-medicine' },
-                advice:          { el: 'drt-advice',           card: 'card-advice' },
-                next_steps:      { el: 'drt-next-steps',       card: 'card-nextsteps' }
+                chief_complaint: { el: 'drt-chief-complaint', card: 'card-chief', badge: 'drt-badge-chief-complaint' },
+                diagnosis:       { el: 'drt-diagnosis',        card: 'card-diagnosis', badge: 'drt-badge-diagnosis' },
+                medicine:        { el: 'drt-medicine',         card: 'card-medicine', badge: 'drt-badge-medicine' },
+                advice:          { el: 'drt-advice',           card: 'card-advice', badge: 'drt-badge-advice' },
+                next_steps:      { el: 'drt-next-steps',       card: 'card-nextsteps', badge: 'drt-badge-next-steps' }
             };
 
             for (const [key, val] of Object.entries(mapping)) {
                 const contentEl = document.getElementById(val.el);
                 const cardEl = document.getElementById(val.card);
+                const badgeEl = document.getElementById(val.badge);
                 const text = extraction[key];
 
                 if (text && text.trim() && contentEl) {
                     contentEl.textContent = text;
                     contentEl.classList.remove('drt-empty');
+
+                    // Update badge to UPDATED
+                    if (badgeEl) {
+                        badgeEl.textContent = 'UPDATED';
+                        badgeEl.classList.add('drt-badge-updated');
+                    }
 
                     if (updatedCardIds && updatedCardIds.some(id => val.card.includes(id))) {
                         cardEl.classList.add('drt-card-updating');
@@ -1080,8 +1656,6 @@
         }
 
         function copyToClipboard(text) {
-            // navigator.clipboard requires secure context (HTTPS/localhost)
-            // Use execCommand fallback for file:// protocol
             try {
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(text).then(() => {
@@ -1122,6 +1696,99 @@
             setTimeout(() => {
                 toast.classList.remove('drt-toast-visible');
             }, 2000);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // EMR PANEL LOGIC
+        // ═══════════════════════════════════════════════════════════
+
+        const emrFormSection = document.getElementById('emr-form-section');
+        const emrWaitingSection = document.getElementById('emr-waiting-section');
+        const emrResultsSection = document.getElementById('emr-results-section');
+        const emrStatus = document.getElementById('emr-status');
+
+        function emrSetStatus(text, state) {
+            emrStatus.textContent = text;
+            emrStatus.className = 'emr-panel-status';
+            if (state) emrStatus.classList.add('emr-status-' + state);
+        }
+
+        function emrShowForm() {
+            emrFormSection.style.display = '';
+            emrWaitingSection.style.display = 'none';
+            emrResultsSection.style.display = 'none';
+            emrSetStatus('Ready', '');
+            // Re-enable form
+            document.querySelectorAll('#emr-form-section input, #emr-form-section select, #emr-form-section textarea').forEach(el => el.disabled = false);
+            document.getElementById('emr-start-btn').disabled = false;
+        }
+
+        function emrShowWaiting() {
+            emrFormSection.style.display = 'none';
+            emrWaitingSection.style.display = '';
+            emrResultsSection.style.display = 'none';
+            emrSetStatus('Recording', 'active');
+        }
+
+        function emrShowResults(extraction) {
+            emrFormSection.style.display = 'none';
+            emrWaitingSection.style.display = 'none';
+            emrResultsSection.style.display = '';
+            emrSetStatus('Received', 'received');
+
+            const mapping = {
+                chief_complaint: 'emr-res-chief',
+                diagnosis: 'emr-res-diagnosis',
+                medicine: 'emr-res-medicine',
+                advice: 'emr-res-advice',
+                next_steps: 'emr-res-nextsteps'
+            };
+
+            for (const [key, id] of Object.entries(mapping)) {
+                const el = document.getElementById(id);
+                const val = extraction[key];
+                if (el) {
+                    if (val && val.trim()) {
+                        el.textContent = val;
+                        el.classList.remove('emr-empty');
+                    } else {
+                        el.textContent = '--';
+                        el.classList.add('emr-empty');
+                    }
+                }
+            }
+        }
+
+        function exportToEMRPanel() {
+            // Get the edited values from post-session textareas
+            const extraction = {};
+            for (const key of PREVIEW_FIELD_KEYS) {
+                const el = document.getElementById('drt-edit-' + key);
+                extraction[key] = el ? el.value.trim() : '';
+            }
+            emrShowResults(extraction);
+        }
+
+        function emrFillForm() {
+            document.getElementById('emr-appointment-id').value = 'APT-2024-001';
+            document.getElementById('emr-patient-name').value = 'Rahul Sharma';
+            document.getElementById('emr-patient-age').value = '45';
+            document.getElementById('emr-patient-gender').value = 'Male';
+            document.getElementById('emr-patient-history').value = 'No known allergies. Previous consultation for seasonal allergies (2023). Family history: Mother - migraine, Father - hypertension.';
+            document.getElementById('emr-gmeet-link').value = 'https://meet.google.com/rxj-knwb-yzm';
+        }
+
+        function emrDisableForm() {
+            document.querySelectorAll('#emr-form-section input, #emr-form-section select, #emr-form-section textarea').forEach(el => el.disabled = true);
+            document.getElementById('emr-start-btn').disabled = true;
+        }
+
+        function emrResetAll() {
+            emrShowForm();
+            document.getElementById('emr-patient-name').value = '';
+            document.getElementById('emr-patient-age').value = '';
+            document.getElementById('emr-patient-gender').value = '';
+            document.getElementById('emr-patient-history').value = '';
         }
     </script>
 </body>

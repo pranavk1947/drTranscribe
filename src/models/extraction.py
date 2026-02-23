@@ -4,11 +4,26 @@ from pydantic import BaseModel, Field
 class ExtractionResult(BaseModel):
     """Structured clinical data extraction result."""
     
-    chief_complaint: str = Field(default="", description="Patient's primary reason for visit")
-    diagnosis: str = Field(default="", description="Doctor's assessment")
-    medicine: str = Field(default="", description="Medications prescribed with dosage")
-    advice: str = Field(default="", description="Lifestyle advice")
-    next_steps: str = Field(default="", description="Lab tests, follow-up, cross-consultation")
+    chief_complaint: str = Field(
+        default="",
+        description="Patient's symptoms with duration and severity, semicolon-separated. Only what the patient is physically or mentally experiencing."
+    )
+    diagnosis: str = Field(
+        default="",
+        description="Doctor's clinical assessment: identified condition, causes, triggers, risk factors, allergies, family history, and relevant lifestyle factors. Semicolon-separated."
+    )
+    medicine: str = Field(
+        default="",
+        description="Specific medications prescribed by the doctor with dosage and frequency. Semicolon-separated."
+    )
+    advice: str = Field(
+        default="",
+        description="Lifestyle recommendations and non-medication instructions from the doctor. Semicolon-separated."
+    )
+    next_steps: str = Field(
+        default="",
+        description="Concrete actions the patient must take after the consultation: lab tests, follow-ups, specialist referrals. Semicolon-separated."
+    )
     
     def merge(self, other: 'ExtractionResult') -> 'ExtractionResult':
         """Merge with another extraction result (append new information)."""

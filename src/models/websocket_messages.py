@@ -14,9 +14,10 @@ class StartSessionMessage(BaseModel):
 
 class AudioChunkMessage(BaseModel):
     """Message containing audio chunk data."""
-    
+
     type: Literal["audio_chunk"] = "audio_chunk"
     audio_data: str = Field(..., description="Base64 encoded audio data")
+    source: Optional[str] = Field(default=None, description="Audio source: 'mic' (doctor) or 'tab' (patient)")
 
 
 class StopSessionMessage(BaseModel):

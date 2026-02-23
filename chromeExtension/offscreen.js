@@ -15,6 +15,22 @@ let audioContext = null;
 let tabStream = null;
 let workletNode = null;
 let isCapturing = false;
+let echoAudioElement = null;
+
+/**
+ * Check if audio samples contain speech-level energy.
+ * @param {Float32Array} samples - Audio samples in [-1.0, 1.0] range
+ * @param {number} threshold - RMS threshold (0.01 = conservative for speech)
+ * @returns {boolean} true if speech detected
+ */
+function hasSpeechEnergy(samples, threshold = 0.01) {
+    let sumSq = 0;
+    for (let i = 0; i < samples.length; i++) {
+        sumSq += samples[i] * samples[i];
+    }
+    const rms = Math.sqrt(sumSq / samples.length);
+    return rms >= threshold;
+}
 
 // Audio config defaults (overridden by backend config)
 let targetSampleRate = 16000; // What the backend expects
@@ -60,14 +76,28 @@ async function startCapture(streamId, audioConfig) {
         // 3. Create source node for tab audio
         const tabSource = audioContext.createMediaStreamSource(tabStream);
 
-        // 4. CRITICAL: Re-route tab audio to speakers
-        //    tabCapture mutes the tab audio by default, so we must
-        //    connect the tab source directly to the audio destination
-        //    to let the user hear the patient's voice
-        tabSource.connect(audioContext.destination);
-        console.log('[Offscreen] Tab audio routed to speakers');
+        // 4. CRITICAL: Re-route tab audio to speakers via <audio> element
+        //    tabCapture mutes the tab audio by default. We route through a
+        //    MediaStreamDestination -> <audio> element (NOT audioContext.destination)
+        //    so Chrome's AEC can correlate playback with mic input and cancel echo.
+        const speakerDest = audioContext.createMediaStreamDestination();
+        tabSource.connect(speakerDest);
 
-        // 5. Load AudioWorklet processor and connect tab source to it
+        echoAudioElement = document.createElement('audio');
+        echoAudioElement.srcObject = speakerDest.stream;
+        echoAudioElement.autoplay = true;
+        document.body.appendChild(echoAudioElement);
+        console.log('[Offscreen] Tab audio routed to speakers via <audio> element (AEC-compatible)');
+
+        // 5. Anti-alias filter: remove frequencies above target Nyquist (8kHz)
+        //    before downsampling from 48kHz to 16kHz. Prevents aliasing artifacts
+        //    where 8-24kHz folds back into the speech band.
+        const antiAliasFilter = audioContext.createBiquadFilter();
+        antiAliasFilter.type = 'lowpass';
+        antiAliasFilter.frequency.value = 7500;
+        antiAliasFilter.Q.value = 0.707; // Butterworth — flat passband
+
+        // 6. Load AudioWorklet processor
         await audioContext.audioWorklet.addModule('audio-worklet-processor.js');
         workletNode = new AudioWorkletNode(audioContext, 'audio-capture-processor');
 
@@ -85,8 +115,9 @@ async function startCapture(streamId, audioConfig) {
             }
         };
 
-        // Connect tab source to worklet
-        tabSource.connect(workletNode);
+        // Connect: tabSource -> antiAliasFilter -> workletNode
+        tabSource.connect(antiAliasFilter);
+        antiAliasFilter.connect(workletNode);
         // Worklet needs to connect to destination to keep processing
         workletNode.connect(audioContext.destination);
 
@@ -140,6 +171,12 @@ function handleAudioChunk(samples, nativeSr) {
         // Downsample from native rate (48kHz) to target rate (16kHz)
         const downsampled = downsample(samples, nativeSr, targetSampleRate);
 
+        // Voice Activity Detection: skip silent/noise-only chunks
+        if (!hasSpeechEnergy(downsampled)) {
+            console.log('[Offscreen] Silent chunk, skipping');
+            return;
+        }
+
         // Encode to WAV at target sample rate
         const wavBlob = WavEncoder.encode(downsampled, targetSampleRate, 1);
 
@@ -147,10 +184,11 @@ function handleAudioChunk(samples, nativeSr) {
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64Data = reader.result.split(',')[1];
-            // Send to background service worker
+            // Send to background service worker (source: tab = patient/remote audio)
             chrome.runtime.sendMessage({
                 type: 'audio-chunk',
-                audio_data: base64Data
+                audio_data: base64Data,
+                source: 'tab'
             });
             console.log(`[Offscreen] Sent audio chunk: ${samples.length} native samples -> ${downsampled.length} @${targetSampleRate}Hz, ${base64Data.length} chars base64`);
         };
@@ -174,6 +212,14 @@ function stopCapture() {
         workletNode.port.postMessage({ type: 'flush' });
         workletNode.disconnect();
         workletNode = null;
+    }
+
+    // Remove echo cancellation audio element
+    if (echoAudioElement) {
+        echoAudioElement.pause();
+        echoAudioElement.srcObject = null;
+        echoAudioElement.remove();
+        echoAudioElement = null;
     }
 
     // Stop tab stream tracks

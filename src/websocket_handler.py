@@ -3,14 +3,16 @@ import json
 import logging
 import base64
 import struct
+import time
 import uuid
+from datetime import datetime
 from typing import Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from .services.transcription_service import TranscriptionService
 from .services.extraction_service import ExtractionService
 from .services.session_manager import SessionManager
 from .services.audio_storage import AudioStorageService
-from .models.consultation import ConsultationSession
+from .models.consultation import ConsultationSession, TranscriptChunk
 from .models.patient import Patient
 from .models.websocket_messages import (
     StartSessionMessage,
@@ -26,7 +28,11 @@ logger = logging.getLogger(__name__)
 
 class WebSocketHandler:
     """WebSocket connection handler for real-time transcription."""
-    
+
+    # Minimum seconds between extraction starts per session.
+    # 5s keeps Groq API calls under rate limits while staying responsive.
+    _EXTRACTION_THROTTLE_SECS = 5
+
     def __init__(
         self,
         settings: Settings,
@@ -40,6 +46,10 @@ class WebSocketHandler:
         self.extraction_service = extraction_service
         self.session_manager = session_manager
         self.audio_storage = audio_storage_service
+        self._extraction_running = {}   # session_id -> bool
+        self._extraction_pending = {}   # session_id -> (session, transcript, websocket)
+        self._last_extraction_time = {} # session_id -> monotonic timestamp
+        self._extraction_timer = {}     # session_id -> asyncio.TimerHandle
     
     async def handle_connection(self, websocket: WebSocket):
         """Handle WebSocket connection lifecycle."""
@@ -72,31 +82,31 @@ class WebSocketHandler:
                     )
                 
                 elif message_type == "stop_session":
+                    # Send acknowledgment IMMEDIATELY so client UI transitions instantly
+                    try:
+                        await websocket.send_text(json.dumps({"type": "session_stopped"}))
+                    except Exception:
+                        pass  # Client may have already closed
+
                     if current_session_id:
-                        # Extract any remaining transcript before ending session
                         session = self.session_manager.get_session(current_session_id)
                         if session:
-                            full_transcript = session.get_full_transcript()
-                            if full_transcript.strip():  # If there's ANY transcript left
-                                logger.info(f"Final extraction on stop: {len(full_transcript)} chars")
-                                try:
-                                    await self._handle_extraction(
-                                        session,
-                                        full_transcript,
-                                        websocket=None,  # Don't send update - client is stopping
-                                        ignore_length_check=True  # Extract regardless of length
-                                    )
-                                except Exception as e:
-                                    logger.error(f"Final extraction failed: {e}", exc_info=True)
+                            # Run final extraction + audio save in background
+                            asyncio.create_task(
+                                self._finalize_session(session)
+                            )
 
-                            # Combine and save audio in background
-                            if session.audio_chunk_paths:
-                                asyncio.create_task(
-                                    self._save_session_audio(session)
-                                )
+                        # Clean up background extraction tracking
+                        self._extraction_running.pop(current_session_id, None)
+                        self._extraction_pending.pop(current_session_id, None)
+                        self._last_extraction_time.pop(current_session_id, None)
+                        timer = self._extraction_timer.pop(current_session_id, None)
+                        if timer:
+                            timer.cancel()
 
                         self.session_manager.end_session(current_session_id)
                         current_session_id = None
+
                     break
                 
                 else:
@@ -105,8 +115,8 @@ class WebSocketHandler:
                         f"Unknown message type: {message_type}"
                     )
         
-        except WebSocketDisconnect:
-            logger.info("WebSocket disconnected")
+        except (WebSocketDisconnect, RuntimeError) as e:
+            logger.info(f"WebSocket disconnected: {e}")
             if current_session_id:
                 # Extract any remaining transcript before ending session
                 session = self.session_manager.get_session(current_session_id)
@@ -125,16 +135,27 @@ class WebSocketHandler:
                             logger.error(f"Final extraction failed: {e}", exc_info=True)
 
                     # Combine and save audio in background
-                    if session.audio_chunk_paths:
+                    if session.has_audio_chunks():
                         asyncio.create_task(
                             self._save_session_audio(session)
                         )
+
+                # Clean up background extraction tracking
+                self._extraction_running.pop(current_session_id, None)
+                self._extraction_pending.pop(current_session_id, None)
+                self._last_extraction_time.pop(current_session_id, None)
+                timer = self._extraction_timer.pop(current_session_id, None)
+                if timer:
+                    timer.cancel()
 
                 self.session_manager.end_session(current_session_id)
 
         except Exception as e:
             logger.error(f"WebSocket error: {str(e)}", exc_info=True)
-            await self._send_error(websocket, f"Internal error: {str(e)}")
+            try:
+                await self._send_error(websocket, f"Internal error: {str(e)}")
+            except Exception:
+                pass  # WebSocket may already be closed
             if current_session_id:
                 # Extract any remaining transcript before ending session
                 session = self.session_manager.get_session(current_session_id)
@@ -153,13 +174,21 @@ class WebSocketHandler:
                             logger.error(f"Final extraction failed: {ex}", exc_info=True)
 
                     # Combine and save audio in background
-                    if session.audio_chunk_paths:
+                    if session.has_audio_chunks():
                         asyncio.create_task(
                             self._save_session_audio(session)
                         )
 
+                # Clean up background extraction tracking
+                self._extraction_running.pop(current_session_id, None)
+                self._extraction_pending.pop(current_session_id, None)
+                self._last_extraction_time.pop(current_session_id, None)
+                timer = self._extraction_timer.pop(current_session_id, None)
+                if timer:
+                    timer.cancel()
+
                 self.session_manager.end_session(current_session_id)
-    
+
     async def _handle_start_session(
         self,
         websocket: WebSocket,
@@ -284,9 +313,12 @@ class WebSocketHandler:
 
         # Send update to frontend if websocket is provided
         if websocket:
-            update_msg = ExtractionUpdateMessage(extraction=session.extraction)
-            await websocket.send_text(update_msg.model_dump_json())
-            logger.info(f"Sent extraction update for session {session.session_id}")
+            try:
+                update_msg = ExtractionUpdateMessage(extraction=session.extraction)
+                await websocket.send_text(update_msg.model_dump_json())
+                logger.info(f"Sent extraction update for session {session.session_id}")
+            except (RuntimeError, WebSocketDisconnect):
+                logger.debug(f"WebSocket closed, skipping extraction update for session {session.session_id}")
 
     async def _handle_audio_chunk(
         self,
@@ -312,15 +344,21 @@ class WebSocketHandler:
                 logger.debug("Silent audio chunk, skipping transcription")
                 return
 
-            # Save audio chunk to temp disk
+            # Save audio chunk to temp disk (separate track per source)
+            source = audio_msg.source or "mic"
+            chunk_index = session.mic_chunk_count if source == "mic" else session.tab_chunk_count
             chunk_path = await self.audio_storage.save_chunk(
                 session_id=session_id,
                 chunk_bytes=audio_bytes,
-                chunk_index=session.audio_chunk_count
+                chunk_index=chunk_index,
+                source=source
             )
             if chunk_path:
-                session.add_audio_chunk_path(chunk_path)
-                session.audio_chunk_count += 1
+                session.add_audio_chunk_path(chunk_path, source=source)
+                if source == "tab":
+                    session.tab_chunk_count += 1
+                else:
+                    session.mic_chunk_count += 1
 
             # Transcribe audio
             transcript = await self.transcription_service.transcribe(audio_bytes)
@@ -328,14 +366,25 @@ class WebSocketHandler:
                 logger.debug("Empty transcript, skipping extraction")
                 return
 
-            session.add_transcript_chunk(transcript)
-            logger.info(f"Transcribed: {transcript[:100]}...")
+            # Build structured chunk with speaker label and timing
+            # mic = doctor (local user), tab = patient (remote participant)
+            speaker = "Doctor" if source == "mic" else "Patient"
+            elapsed = (datetime.utcnow() - session.started_at).total_seconds()
+
+            chunk = TranscriptChunk(
+                text=transcript.strip(),
+                source=source,
+                speaker=speaker,
+                timestamp=round(elapsed, 1),
+            )
+            session.add_transcript_chunk(chunk)
+            logger.info(f"Transcribed ({source}|{speaker}|{elapsed:.1f}s): {transcript[:100]}...")
 
             # Get full transcript for extraction
             full_transcript = session.get_full_transcript()
 
-            # Handle extraction with length check
-            await self._handle_extraction(session, full_transcript, websocket)
+            # Fire extraction in background (non-blocking) so audio pipeline isn't stalled
+            self._schedule_extraction(session, full_transcript, websocket)
 
         except (WebSocketDisconnect, RuntimeError) as e:
             logger.warning(f"WebSocket closed during audio processing: {e}")
@@ -343,6 +392,67 @@ class WebSocketHandler:
             logger.error(f"Failed to process audio chunk: {str(e)}", exc_info=True)
             await self._send_error(websocket, f"Failed to process audio: {str(e)}")
     
+    def _schedule_extraction(self, session, full_transcript, websocket):
+        """Schedule extraction as a background task with throttle + single-flight dedup.
+
+        Guarantees:
+        - At most one extraction running per session at a time.
+        - At most one extraction *started* per _EXTRACTION_THROTTLE_SECS window.
+        - The latest transcript is always used (stale queued values overwritten).
+        """
+        sid = session.session_id
+
+        if self._extraction_running.get(sid):
+            # Already running — just queue latest transcript
+            self._extraction_pending[sid] = (session, full_transcript, websocket)
+            return
+
+        now = time.monotonic()
+        elapsed = now - self._last_extraction_time.get(sid, 0)
+
+        if elapsed >= self._EXTRACTION_THROTTLE_SECS:
+            # Enough time since last extraction — start immediately
+            self._start_extraction_bg(sid, session, full_transcript, websocket)
+        else:
+            # Too soon — queue and schedule a timer for the remaining interval
+            self._extraction_pending[sid] = (session, full_transcript, websocket)
+            if sid not in self._extraction_timer:
+                delay = self._EXTRACTION_THROTTLE_SECS - elapsed
+                loop = asyncio.get_event_loop()
+                self._extraction_timer[sid] = loop.call_later(
+                    delay, self._fire_pending_extraction, sid
+                )
+
+    def _start_extraction_bg(self, sid, session, full_transcript, websocket):
+        """Start a background extraction task, cancelling any pending timer."""
+        self._extraction_running[sid] = True
+        self._last_extraction_time[sid] = time.monotonic()
+        timer = self._extraction_timer.pop(sid, None)
+        if timer:
+            timer.cancel()
+        asyncio.create_task(self._run_extraction_bg(session, full_transcript, websocket))
+
+    def _fire_pending_extraction(self, sid):
+        """Timer callback — drain queued extraction after throttle interval elapses."""
+        self._extraction_timer.pop(sid, None)
+        if sid in self._extraction_pending and not self._extraction_running.get(sid):
+            s, t, ws = self._extraction_pending.pop(sid)
+            self._start_extraction_bg(sid, s, t, ws)
+
+    async def _run_extraction_bg(self, session, full_transcript, websocket):
+        """Run extraction in the background, then drain any queued request."""
+        sid = session.session_id
+        try:
+            await self._handle_extraction(session, full_transcript, websocket)
+        except Exception as e:
+            logger.error(f"Background extraction failed: {e}", exc_info=True)
+        finally:
+            self._extraction_running[sid] = False
+            if sid in self._extraction_pending:
+                # Queued during our run — start immediately (already waited)
+                s, t, ws = self._extraction_pending.pop(sid)
+                self._start_extraction_bg(sid, s, t, ws)
+
     async def _send_error(self, websocket: WebSocket, message: str):
         """Send error message to client."""
         try:
@@ -351,26 +461,53 @@ class WebSocketHandler:
         except Exception as e:
             logger.error(f"Failed to send error message: {str(e)}")
 
+    async def _finalize_session(self, session: ConsultationSession):
+        """Background task to run final extraction and save audio after session ends."""
+        try:
+            full_transcript = session.get_full_transcript()
+            if full_transcript.strip():
+                logger.info(f"Final extraction on stop: {len(full_transcript)} chars")
+                try:
+                    await self._handle_extraction(
+                        session,
+                        full_transcript,
+                        websocket=None,
+                        ignore_length_check=True
+                    )
+                except Exception as e:
+                    logger.error(f"Final extraction failed: {e}", exc_info=True)
+
+            if session.has_audio_chunks():
+                await self._save_session_audio(session)
+        except Exception as e:
+            logger.error(f"Session finalization failed: {e}", exc_info=True)
+
     async def _save_session_audio(self, session: ConsultationSession):
         """
-        Background task to combine and save session audio.
+        Background task to combine and save session audio and transcript.
 
-        Runs asynchronously after stop_session response is sent.
-        Doesn't block the WebSocket response.
+        Saves mic (doctor) and tab (patient) as separate tracks to
+        preserve correct chronological ordering within each source.
+        Also saves the diarized transcript as a text file.
         """
         try:
             logger.info(f"Background audio save started for session {session.session_id}")
 
-            chunk_paths = session.get_audio_chunk_paths()
+            mic_paths = session.get_mic_chunk_paths()
+            tab_paths = session.get_tab_chunk_paths()
+            logger.info(f"Audio tracks: {len(mic_paths)} mic chunks, {len(tab_paths)} tab chunks")
+
             saved_path = await self.audio_storage.combine_and_save(
                 session_id=session.session_id,
                 appointment_id=session.appointment_id,
-                chunk_paths=chunk_paths
+                mic_chunk_paths=mic_paths,
+                tab_chunk_paths=tab_paths,
+                transcript=session.get_full_transcript()
             )
 
             if saved_path:
                 session.audio_saved_path = str(saved_path)
-                logger.info(f"✅ Session audio saved: {saved_path}")
+                logger.info(f"Session audio saved: {saved_path}")
             else:
                 logger.warning(f"Audio save failed for session {session.session_id}")
 

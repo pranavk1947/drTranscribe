@@ -1,19 +1,18 @@
 import json
 import logging
 from typing import Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from ..base import ExtractionProvider, ExtractionError
 from ...models.extraction import ExtractionResult
 from ...models.patient import Patient
-from .prompts import MEDICAL_EXTRACTION_SYSTEM_PROMPT
+from .prompts import MEDICAL_EXTRACTION_SYSTEM_PROMPT, MEDICAL_EXTRACTION_MERGE_INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
 
 
 class GeminiGPTProvider(ExtractionProvider):
-    """Google Gemini extraction provider."""
-
-
+    """Google Gemini extraction provider using the google-genai SDK."""
 
     def __init__(
         self,
@@ -21,18 +20,7 @@ class GeminiGPTProvider(ExtractionProvider):
         model: str = "gemini-2.5-flash",
         temperature: float = 0.3
     ):
-        genai.configure(api_key=api_key)
-
-        # Gemini 1.5+ supports JSON response format
-        generation_config = {
-            "temperature": temperature,
-            "response_mime_type": "application/json"
-        }
-
-        self.model = genai.GenerativeModel(
-            model_name=model,
-            generation_config=generation_config
-        )
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model
         self.temperature = temperature
         logger.info(f"Initialized Gemini provider with model: {model}")
@@ -46,32 +34,24 @@ class GeminiGPTProvider(ExtractionProvider):
         """Extract structured data using Gemini API."""
         try:
             user_prompt = self._build_user_prompt(transcript, patient, previous_extraction)
-            full_prompt = f"{MEDICAL_EXTRACTION_SYSTEM_PROMPT}\n\n{user_prompt}"
 
             logger.debug(f"Sending extraction request for {len(transcript)} chars")
 
-            # Gemini SDK is synchronous, but we can use it in async context
-            response = self.model.generate_content(full_prompt)
+            response = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=MEDICAL_EXTRACTION_SYSTEM_PROMPT,
+                    temperature=self.temperature,
+                    response_mime_type="application/json",
+                    response_schema=ExtractionResult,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
 
-            # Extract JSON from response
-            content = response.text
-
-            # Try to parse JSON directly
-            try:
-                extraction_data = json.loads(content)
-            except json.JSONDecodeError:
-                # If not valid JSON, try to extract JSON from markdown code block
-                if "```json" in content:
-                    json_str = content.split("```json")[1].split("```")[0].strip()
-                    extraction_data = json.loads(json_str)
-                elif "```" in content:
-                    json_str = content.split("```")[1].split("```")[0].strip()
-                    extraction_data = json.loads(json_str)
-                else:
-                    raise ValueError("Response is not valid JSON")
-
+            extraction_data = json.loads(response.text)
             result = ExtractionResult(**extraction_data)
-            logger.info(f"✅ Extraction successful")
+            logger.info("Extraction successful")
 
             return result
 
@@ -85,32 +65,27 @@ class GeminiGPTProvider(ExtractionProvider):
         patient: Patient,
         previous_extraction: Optional[ExtractionResult]
     ) -> str:
-        """Build the user prompt for extraction."""
-        prompt = f"""**Patient Information:**
-- Name: {patient.name}
-- Age: {patient.age}
-- Gender: {patient.gender}"""
+        """Build the user prompt with context first, instructions last."""
+        parts = []
 
+        # Context first: patient info
+        patient_info = f"<patient>\nName: {patient.name}\nAge: {patient.age}\nGender: {patient.gender}"
         if patient.history:
-            prompt += f"\n- Medical History: {patient.history}"
+            patient_info += f"\nMedical History: {patient.history}"
+        patient_info += "\n</patient>"
+        parts.append(patient_info)
 
-        prompt += f"""
+        # Context: transcript
+        parts.append(f"<transcript>\n{transcript}\n</transcript>")
 
-**Current Transcript:**
-{transcript}"""
-
+        # Context: previous extraction (if any)
         if previous_extraction:
-            prompt += f"""
+            parts.append(
+                f"<previous_extraction>\n{previous_extraction.model_dump_json(indent=2)}\n</previous_extraction>"
+            )
+            # Instructions last
+            parts.append(MEDICAL_EXTRACTION_MERGE_INSTRUCTIONS)
 
-**Previous Extraction (merge new info with this):**
-```json
-{previous_extraction.model_dump_json(indent=2)}
-```
+        parts.append("Extract the structured clinical data from the transcript above.")
 
-IMPORTANT: Merge the current transcript information with the previous extraction. Add new information, don't replace existing valid data unless there's a correction."""
-
-        prompt += """
-
-Return the complete extraction as valid JSON with all 5 fields."""
-
-        return prompt
+        return "\n\n".join(parts)

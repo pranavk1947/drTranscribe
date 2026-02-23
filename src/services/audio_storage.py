@@ -26,14 +26,17 @@ class AudioStorageService:
 
         logger.info(f"Audio storage initialized: temp={self.temp_dir}, output={self.output_dir}")
 
-    async def save_chunk(self, session_id: str, chunk_bytes: bytes, chunk_index: int) -> Optional[Path]:
+    async def save_chunk(
+        self, session_id: str, chunk_bytes: bytes, chunk_index: int, source: str = "mic"
+    ) -> Optional[Path]:
         """
         Save an audio chunk to temporary storage.
 
         Args:
             session_id: Session identifier
             chunk_bytes: WAV audio data
-            chunk_index: Sequential chunk number
+            chunk_index: Sequential chunk number (per-source)
+            source: Audio source — "mic" (doctor) or "tab" (patient)
 
         Returns:
             Path to saved chunk file, or None if storage is disabled
@@ -46,8 +49,8 @@ class AudioStorageService:
         session_temp_dir = self.temp_dir / session_id
         session_temp_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save chunk with sequential naming
-        chunk_path = session_temp_dir / f"chunk_{chunk_index:04d}.wav"
+        # Save chunk with source prefix + sequential naming for correct ordering
+        chunk_path = session_temp_dir / f"{source}_chunk_{chunk_index:04d}.wav"
 
         # Write to disk asynchronously
         await asyncio.to_thread(chunk_path.write_bytes, chunk_bytes)
@@ -59,60 +62,79 @@ class AudioStorageService:
         self,
         session_id: str,
         appointment_id: Optional[str],
-        chunk_paths: List[Path]
+        mic_chunk_paths: List[Path],
+        tab_chunk_paths: List[Path],
+        transcript: Optional[str] = None
     ) -> Optional[Path]:
         """
-        Combine audio chunks and save to final location.
+        Combine audio chunks per source track and save to final location.
 
-        This runs in background - doesn't block the response.
+        Mic (doctor) and tab (patient) chunks are saved as separate files
+        to preserve correct chronological ordering within each track.
+        Optionally saves a diarized transcript text file alongside audio.
 
         Args:
             session_id: Session identifier
             appointment_id: Appointment ID for file organization
-            chunk_paths: List of temp chunk file paths
+            mic_chunk_paths: Mic (doctor) chunk file paths
+            tab_chunk_paths: Tab (patient) chunk file paths
+            transcript: Optional newline-formatted diarized transcript
 
         Returns:
-            Path to final saved audio file, or None on failure
+            Path to output directory, or None on failure
         """
         if not self.config.enabled:
             logger.debug("Audio storage disabled, skipping combine")
             return None
 
-        if not chunk_paths:
+        if not mic_chunk_paths and not tab_chunk_paths:
             logger.warning(f"No audio chunks to combine for session {session_id}")
             return None
 
         try:
-            logger.info(f"Combining {len(chunk_paths)} audio chunks for session {session_id}")
-
-            # Combine chunks into single WAV
-            combined_wav = await asyncio.to_thread(combine_wav_chunks, chunk_paths)
-
-            # Determine output path
+            # Determine output directory
             if appointment_id:
-                # Organize by appointment ID: consultations/appt_12345/audio.wav
                 output_subdir = self.output_dir / f"appt_{appointment_id}"
             else:
-                # Fallback: organize by date and session
                 date_str = datetime.now().strftime("%Y-%m-%d")
                 output_subdir = self.output_dir / date_str
 
             output_subdir.mkdir(parents=True, exist_ok=True)
-            output_path = output_subdir / f"{session_id}_audio.wav"
 
-            # Save combined audio
-            await asyncio.to_thread(output_path.write_bytes, combined_wav)
+            # Sort paths by filename to guarantee chronological order
+            saved_paths = []
 
-            logger.info(
-                f"✅ Audio saved: {output_path} "
-                f"({len(combined_wav)} bytes, {len(chunk_paths)} chunks)"
-            )
+            if mic_chunk_paths:
+                sorted_mic = sorted(mic_chunk_paths, key=lambda p: p.name)
+                logger.info(f"Combining {len(sorted_mic)} mic (doctor) chunks for session {session_id}")
+                combined_mic = await asyncio.to_thread(combine_wav_chunks, sorted_mic)
+                mic_path = output_subdir / f"{session_id}_doctor.wav"
+                await asyncio.to_thread(mic_path.write_bytes, combined_mic)
+                saved_paths.append(mic_path)
+                logger.info(f"Saved doctor audio: {mic_path} ({len(combined_mic)} bytes)")
+
+            if tab_chunk_paths:
+                sorted_tab = sorted(tab_chunk_paths, key=lambda p: p.name)
+                logger.info(f"Combining {len(sorted_tab)} tab (patient) chunks for session {session_id}")
+                combined_tab = await asyncio.to_thread(combine_wav_chunks, sorted_tab)
+                tab_path = output_subdir / f"{session_id}_patient.wav"
+                await asyncio.to_thread(tab_path.write_bytes, combined_tab)
+                saved_paths.append(tab_path)
+                logger.info(f"Saved patient audio: {tab_path} ({len(combined_tab)} bytes)")
+
+            # Save diarized transcript alongside audio
+            if transcript and transcript.strip():
+                transcript_path = output_subdir / f"{session_id}_transcript.txt"
+                await asyncio.to_thread(transcript_path.write_text, transcript, "utf-8")
+                logger.info(f"Saved diarized transcript: {transcript_path}")
+
+            logger.info(f"Audio saved to: {output_subdir} ({len(saved_paths)} track(s))")
 
             # Cleanup temp files if configured
             if self.config.cleanup_temp_files:
                 await self._cleanup_temp_files(session_id)
 
-            return output_path
+            return output_subdir
 
         except Exception as e:
             logger.error(f"Failed to combine and save audio for session {session_id}: {e}", exc_info=True)

@@ -19,7 +19,7 @@ class ExtractionConfig(BaseModel):
     provider: str
     model: str
     temperature: float = 0.3
-    min_transcript_length: int = 50  # Minimum chars before triggering extraction
+    min_transcript_length: int = 30  # Minimum chars before triggering extraction
 
 
 class OpenAIConfig(BaseModel):
