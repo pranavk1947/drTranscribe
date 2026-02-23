@@ -49,3 +49,6 @@ htmlcov/
 # Temporary files
 *.tmp
 *.bak
+
+# Session data (audio recordings, temp chunks)
+data/
