@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loop Scribe -- Instance Crash Recovery</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  .header h1 { font-size: 14px; font-weight: 700; color: #f8fafc; letter-spacing: -0.3px; }
+  .header .badge {
+    background: linear-gradient(135deg, #ef4444, #f97316);
+    color: #fff; font-size: 10px; font-weight: 700;
+    padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .header .subtitle { font-size: 13px; color: #64748b; margin-left: auto; }
+
+  /* ── Main ── */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  /* ── SVG Canvas ── */
+  .canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+  .canvas-wrap svg { width: 100%; height: 100%; display: block; }
+
+  /* ── Info Panel ── */
+  .info-panel {
+    width: 100%; flex-shrink: 0; max-height: 180px;
+    background: #1e293b; border-top: 1px solid #334155;
+    display: flex; flex-direction: row; overflow: hidden;
+  }
+  .step-header {
+    padding: 12px 16px; border-right: 1px solid #334155; min-width: 200px; max-width: 220px;
+  }
+  .step-label {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #64748b; margin-bottom: 6px;
+  }
+  .step-title {
+    font-size: 16px; font-weight: 700; color: #f8fafc; line-height: 1.3;
+    transition: color 0.3s;
+  }
+  .step-phase-badge {
+    display: inline-block; margin-top: 8px;
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .step-phase-badge.phase1 { background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
+  .step-phase-badge.phase2 { background: rgba(20,184,166,0.15); color: #5eead4; border: 1px solid rgba(20,184,166,0.3); }
+  .step-phase-badge.crash  { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+  .step-desc {
+    padding: 12px 16px; flex: 1; overflow-y: auto;
+    font-size: 11.5px; line-height: 1.6; color: #cbd5e1;
+  }
+  .step-desc::-webkit-scrollbar { width: 5px; }
+  .step-desc::-webkit-scrollbar-track { background: transparent; }
+  .step-desc::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  .step-desc code {
+    background: #334155; color: #fbbf24; padding: 1px 6px; border-radius: 4px;
+    font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .step-desc strong { color: #f1f5f9; }
+
+  /* ── Compare grid (step 5) ── */
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+  .compare-col { border-radius: 8px; padding: 10px 12px; }
+  .compare-col.lost { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); }
+  .compare-col.kept { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); }
+  .compare-col h4 { font-size: 11px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .compare-col.lost h4 { color: #ef4444; }
+  .compare-col.kept h4 { color: #22c55e; }
+  .compare-col ul { list-style: none; padding: 0; }
+  .compare-col li { font-size: 12px; color: #94a3b8; padding: 2px 0; line-height: 1.5; }
+  .compare-col.lost li::before { content: "\2717  "; color: #ef4444; font-weight: 700; }
+  .compare-col.kept li::before { content: "\2713  "; color: #22c55e; font-weight: 700; }
+
+  /* ── Controls ── */
+  .controls {
+    padding: 10px 24px;
+    background: #1e293b; border-top: 1px solid #334155;
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  .controls button {
+    background: #334155; color: #e2e8f0; border: 1px solid #475569;
+    border-radius: 8px; padding: 7px 16px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s ease; display: flex; align-items: center; gap: 5px;
+    user-select: none;
+  }
+  .controls button:hover:not(:disabled) { background: #475569; border-color: #64748b; }
+  .controls button:active:not(:disabled) { transform: scale(0.97); }
+  .controls button.primary { background: #6366f1; border-color: #6366f1; color: #fff; }
+  .controls button.primary:hover:not(:disabled) { background: #4f46e5; }
+  .controls button:disabled { opacity: 0.3; cursor: not-allowed; }
+  .progress-wrap { flex: 1; display: flex; align-items: center; gap: 10px; }
+  .progress-bar {
+    flex: 1; height: 5px; background: #1e293b; border-radius: 3px;
+    overflow: hidden; position: relative; border: 1px solid #334155;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 3px; transition: width 0.4s ease;
+    background: linear-gradient(90deg, #6366f1, #14b8a6);
+  }
+  .progress-text { font-size: 11px; color: #475569; font-weight: 700; min-width: 50px; text-align: right; font-variant-numeric: tabular-nums; }
+  .kbd-hint { font-size: 10px; color: #334155; margin-left: 8px; }
+  .kbd-hint kbd {
+    background: #1e293b; border: 1px solid #334155; border-radius: 3px;
+    padding: 1px 5px; font-family: inherit; font-size: 10px; color: #475569;
+  }
+
+  /* ── JSON Overlay ── */
+  .json-overlay {
+    position: absolute; pointer-events: none; opacity: 0;
+    transition: opacity 0.5s ease;
+    background: rgba(15,23,42,0.96); border: 1px solid rgba(239,68,68,0.4); border-radius: 10px;
+    padding: 16px 20px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
+    line-height: 1.7; color: #94a3b8; white-space: pre;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 20px rgba(239,68,68,0.1);
+    z-index: 10;
+  }
+  .json-overlay.visible { opacity: 1; }
+  .json-key { color: #ef4444; }
+  .json-str { color: #4ade80; }
+  .json-num { color: #fbbf24; }
+  .json-comment { color: #475569; font-style: italic; }
+
+  /* ── Crash overlay ── */
+  .crash-flash {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    transition: opacity 0.08s ease;
+    z-index: 5;
+  }
+  .crash-flash.active {
+    opacity: 1;
+    background: radial-gradient(ellipse at var(--cx, 50%) var(--cy, 50%),
+      rgba(239,68,68,0.5) 0%, rgba(239,68,68,0.15) 40%, transparent 70%);
+  }
+
+  /* ── SVG text defaults ── */
+  svg text { font-family: 'Inter', -apple-system, sans-serif; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>drTranscribe</h1>
+  <span class="badge">Crash Recovery</span>
+  <span class="subtitle">Instance Crash & Session Recovery via Redis + GCS</span>
+</div>
+
+<div class="main">
+  <div class="canvas-wrap" id="canvasWrap">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- Glow filters per color -->
+        <filter id="glow-amber" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#f59e0b" flood-opacity="0.6"/>
+        </filter>
+        <filter id="glow-indigo" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#6366f1" flood-opacity="0.6"/>
+        </filter>
+        <filter id="glow-red" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#ef4444" flood-opacity="0.7"/>
+        </filter>
+        <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#22c55e" flood-opacity="0.6"/>
+        </filter>
+        <filter id="glow-teal" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#14b8a6" flood-opacity="0.6"/>
+        </filter>
+        <filter id="glow-orange" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#f97316" flood-opacity="0.6"/>
+        </filter>
+        <filter id="glow-big-red" x="-100%" y="-100%" width="300%" height="300%">
+          <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#ef4444" flood-opacity="0.9"/>
+        </filter>
+
+        <!-- Arrow markers -->
+        <marker id="arr-amber"  viewBox="0 0 8 6" refX="8" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0.5 L7,3 L0,5.5Z" fill="#f59e0b" opacity="0.8"/></marker>
+        <marker id="arr-indigo" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0.5 L7,3 L0,5.5Z" fill="#6366f1" opacity="0.8"/></marker>
+        <marker id="arr-red"    viewBox="0 0 8 6" refX="8" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0.5 L7,3 L0,5.5Z" fill="#ef4444" opacity="0.8"/></marker>
+        <marker id="arr-green"  viewBox="0 0 8 6" refX="8" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0.5 L7,3 L0,5.5Z" fill="#22c55e" opacity="0.8"/></marker>
+        <marker id="arr-teal"   viewBox="0 0 8 6" refX="8" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0.5 L7,3 L0,5.5Z" fill="#14b8a6" opacity="0.8"/></marker>
+        <marker id="arr-orange" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0.5 L7,3 L0,5.5Z" fill="#f97316" opacity="0.8"/></marker>
+      </defs>
+
+      <!-- Background grid pattern -->
+      <g id="bgGrid" opacity="0.04">
+        <!-- generated by JS -->
+      </g>
+
+      <!-- Phase divider and labels -->
+      <g id="phaseChrome"></g>
+
+      <!-- Layers in z-order -->
+      <g id="edgesLayer"></g>
+      <g id="dotsLayer"></g>
+      <g id="fxLayer"></g>
+      <g id="nodesLayer"></g>
+    </svg>
+
+    <div class="json-overlay" id="jsonOverlay"><span class="json-comment">// Redis hash  session:{id}</span>
+{
+  <span class="json-key">"patient"</span>: {
+    <span class="json-key">"name"</span>: <span class="json-str">"John Doe"</span>,
+    <span class="json-key">"age"</span>: <span class="json-num">45</span>,
+    <span class="json-key">"gender"</span>: <span class="json-str">"Male"</span>
+  },
+  <span class="json-key">"transcript_chunks"</span>: [
+    <span class="json-str">"chunk_0"</span>, <span class="json-str">"chunk_1"</span>,
+    <span class="json-str">"..."</span>, <span class="json-str">"chunk_14"</span>
+  ],
+  <span class="json-key">"extraction_result"</span>: {
+    <span class="json-key">"symptoms"</span>: [<span class="json-str">"..."</span>],
+    <span class="json-key">"diagnosis"</span>: <span class="json-str">"..."</span>
+  },
+  <span class="json-key">"chunk_count"</span>: <span class="json-num">15</span>,
+  <span class="json-key">"gcs_paths"</span>: [<span class="json-str">"gs://..."</span>],
+  <span class="json-key">"ttl_seconds"</span>: <span class="json-num">7200</span>
+}</div>
+
+    <div class="crash-flash" id="crashFlash"></div>
+  </div>
+
+  <div class="info-panel">
+    <div class="step-header">
+      <div class="step-label" id="stepLabel">Step 1 of 10</div>
+      <div class="step-title" id="stepTitle">Normal Operation</div>
+      <div id="phaseBadge"></div>
+    </div>
+    <div class="step-desc" id="stepDesc"></div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="btnPrev" title="Previous (Left arrow)">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    Prev
+  </button>
+  <button id="btnPlay" class="primary" title="Play / Pause (Space)">
+    <svg id="playIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"/></svg>
+    <svg id="pauseIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/></svg>
+    <span id="playLabel">Play</span>
+  </button>
+  <button id="btnNext" title="Next (Right arrow)">
+    Next
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText">1 / 10</div>
+  </div>
+  <span class="kbd-hint"><kbd>Space</kbd> play &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> step</span>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ────────────────────────────────────────────
+     Constants
+  ──────────────────────────────────────────── */
+  const NW = 130, NH = 64, NR = 12;
+
+  /* ────────────────────────────────────────────
+     Measure canvas
+  ──────────────────────────────────────────── */
+  let W = 0, H = 0;
+  function measure() {
+    const r = document.getElementById("canvasWrap").getBoundingClientRect();
+    W = r.width; H = r.height;
+  }
+  measure();
+
+  /* ────────────────────────────────────────────
+     Node layout (responsive)
+  ──────────────────────────────────────────── */
+  function layoutNodes() {
+    const lx = W * 0.25;           // Phase 1 center-x
+    const rx = W * 0.75;           // Phase 2 center-x
+    const row1 = H * 0.18;        // top row
+    const row2 = H * 0.48;        // middle row
+    const row3 = H * 0.76;        // bottom row
+    const spread = Math.min(160, W * 0.13);
+
+    return {
+      /* Phase 1 */
+      client1:   { id:"client1",   x: lx - spread - NW/2,  y: row1, color:"#f59e0b", icon:"\uD83D\uDDA5\uFE0F", label:"Client",       sub:"Chrome Extension",        phase:1 },
+      cloudrun1: { id:"cloudrun1", x: lx + spread - NW/2,  y: row1, color:"#6366f1", icon:"\uD83C\uDFD7\uFE0F", label:"Cloud Run",     sub:"WebSocket Handler",       phase:1 },
+      redis1:    { id:"redis1",    x: lx - spread*0.6 - NW/2, y: row2, color:"#ef4444", icon:"\uD83D\uDD34",       label:"Redis",         sub:"Session State (TTL: 2hr)",phase:1 },
+      gcs1:      { id:"gcs1",      x: lx + spread*0.6 - NW/2, y: row2, color:"#22c55e", icon:"\u2601\uFE0F",       label:"GCS",           sub:"Audio Chunks",            phase:1 },
+      tmp1:      { id:"tmp1",      x: lx - NW/2,              y: row3, color:"#f97316", icon:"\uD83D\uDCBE",       label:"/tmp",          sub:"Ephemeral disk (RAM)",    phase:1 },
+
+      /* Phase 2 */
+      client2:   { id:"client2",   x: rx - spread - NW/2,  y: row1, color:"#f59e0b", icon:"\uD83D\uDDA5\uFE0F", label:"Client",        sub:"Reconnects with session_id", phase:2 },
+      cloudrun2: { id:"cloudrun2", x: rx + spread - NW/2,  y: row1, color:"#14b8a6", icon:"\uD83C\uDFD7\uFE0F", label:"New Instance",   sub:"Fresh Cloud Run container",  phase:2 },
+      redis2:    { id:"redis2",    x: rx - spread*0.6 - NW/2, y: row2, color:"#ef4444", icon:"\uD83D\uDD34",       label:"Redis",          sub:"Session still alive",       phase:2 },
+      gcs2:      { id:"gcs2",      x: rx + spread*0.6 - NW/2, y: row2, color:"#22c55e", icon:"\u2601\uFE0F",       label:"GCS",            sub:"All chunks preserved",      phase:2 },
+    };
+  }
+  let N = layoutNodes();
+
+  /* ────────────────────────────────────────────
+     Edge definitions
+  ──────────────────────────────────────────── */
+  function buildEdges() {
+    return {
+      c1_cr1:   { from:"client1",   to:"cloudrun1",  color:"#f59e0b", label:"WebSocket" },
+      cr1_tmp:  { from:"cloudrun1",  to:"tmp1",       color:"#f97316", label:"/tmp write" },
+      cr1_gcs:  { from:"cloudrun1",  to:"gcs1",       color:"#22c55e", label:"GCS upload" },
+      cr1_red:  { from:"cloudrun1",  to:"redis1",     color:"#ef4444", label:"State sync" },
+      c2_cr2:   { from:"client2",    to:"cloudrun2",  color:"#f59e0b", label:"Reconnect" },
+      cr2_red:  { from:"cloudrun2",  to:"redis2",     color:"#ef4444", label:"Hydrate" },
+      red2_cr2: { from:"redis2",     to:"cloudrun2",  color:"#ef4444", label:"Session data" },
+      cr2_gcs:  { from:"cloudrun2",  to:"gcs2",       color:"#22c55e", label:"Write chunks" },
+      gcs2_cr2: { from:"gcs2",       to:"cloudrun2",  color:"#22c55e", label:"Audio data" },
+    };
+  }
+  let E = buildEdges();
+
+  /* ────────────────────────────────────────────
+     Step definitions
+  ──────────────────────────────────────────── */
+  const steps = [
+    { /* 0 */
+      idx: 1, title: "Normal Operation",
+      phase: "phase1",
+      desc: `Doctor is mid-consultation. Audio chunks flow from the Chrome Extension through the WebSocket to Cloud Run.<br><br>
+        <strong>15 audio chunks</strong> processed so far. Redis holds <strong>15 transcript chunks</strong> (1:1 — each audio chunk produces exactly one transcript). Everything is running smoothly on a single Cloud Run instance.`,
+      nodes: ["client1","cloudrun1","redis1","gcs1","tmp1"],
+      dead: [],
+      edges: ["c1_cr1"],
+      dots: [{e:"c1_cr1",c:"#f59e0b",s:1,loop:true}],
+      glow: [],
+    },
+    { /* 1 */
+      idx: 2, title: "Every Chunk: Triple Write",
+      phase: "phase1",
+      desc: `Each incoming audio chunk triggers a <strong>triple write</strong> for maximum durability:<br><br>
+        <strong>1.</strong> <code>/tmp</code> -- fast local write for immediate STT processing<br>
+        <strong>2.</strong> <code>GCS</code> -- durable cloud storage, fire-and-forget upload<br>
+        <strong>3.</strong> <code>Redis</code> -- transcript text + extraction state updated<br><br>
+        This redundancy is the foundation of crash recovery. No single point of failure.`,
+      nodes: ["client1","cloudrun1","redis1","gcs1","tmp1"],
+      dead: [],
+      edges: ["c1_cr1","cr1_tmp","cr1_gcs","cr1_red"],
+      dots: [
+        {e:"c1_cr1",c:"#f59e0b",s:1,loop:true},
+        {e:"cr1_tmp",c:"#f97316",s:0.8,loop:true,d:0.15},
+        {e:"cr1_gcs",c:"#22c55e",s:0.8,loop:true,d:0.35},
+        {e:"cr1_red",c:"#ef4444",s:0.8,loop:true,d:0.55},
+      ],
+      glow: ["tmp1","gcs1","redis1"],
+    },
+    { /* 2 */
+      idx: 3, title: "Session State in Redis",
+      phase: "phase1",
+      desc: `The Redis hash <code>session:{id}</code> stores the complete session state:<br><br>
+        - Patient demographics (name, age, gender, history)<br>
+        - <code>transcript_chunks</code> list (all 15 chunks)<br>
+        - Current extraction result (symptoms, diagnosis, Rx)<br>
+        - Audio chunk GCS paths for each channel<br>
+        - TTL: <strong>2 hours</strong> (auto-cleanup after inactivity)<br><br>
+        This is the <strong>source of truth</strong> that survives any instance crash.`,
+      nodes: ["client1","cloudrun1","redis1","gcs1","tmp1"],
+      dead: [],
+      edges: ["cr1_red"],
+      dots: [{e:"cr1_red",c:"#ef4444",s:0.7,loop:true}],
+      glow: ["redis1"],
+      showJson: true,
+    },
+    { /* 3 -- CRASH */
+      idx: 4, title: "\uD83D\uDCA5 INSTANCE CRASH",
+      phase: "crash",
+      desc: `<span style="color:#ef4444;font-weight:700;font-size:15px">Cloud Run instance killed!</span><br><br>
+        Possible causes:<br>
+        &bull; Out-of-memory (OOM) kill<br>
+        &bull; Automatic scale-down to zero<br>
+        &bull; New deployment rolling update<br>
+        &bull; Unhandled exception / segfault<br><br>
+        <code>/tmp</code> is <strong>gone</strong> -- it was RAM-backed ephemeral storage.<br>
+        All in-memory state is destroyed. The WebSocket connection drops instantly.`,
+      nodes: ["client1","redis1","gcs1"],
+      dead: ["cloudrun1","tmp1"],
+      edges: [],
+      dots: [],
+      glow: [],
+      crash: true,
+    },
+    { /* 4 */
+      idx: 5, title: "What's Lost vs Preserved",
+      phase: "crash",
+      desc: `<div class="compare-grid">
+        <div class="compare-col lost"><h4>Lost</h4><ul>
+          <li>/tmp audio chunks</li>
+          <li>In-memory session object</li>
+          <li>WebSocket connection</li>
+          <li>Pending extraction timers</li>
+        </ul></div>
+        <div class="compare-col kept"><h4>Preserved</h4><ul>
+          <li>Redis session state</li>
+          <li>GCS audio chunks</li>
+          <li>Client-side state</li>
+          <li>Patient info + transcript</li>
+        </ul></div>
+      </div>
+      <strong>Without Redis + GCS:</strong> everything lost -- doctor must restart from scratch.<br><br>
+      <strong>With Redis + GCS:</strong> only the WebSocket connection is lost. All data survives.`,
+      nodes: ["client1","redis1","gcs1"],
+      dead: ["cloudrun1","tmp1"],
+      edges: [],
+      dots: [],
+      glow: ["redis1","gcs1"],
+    },
+    { /* 5 */
+      idx: 6, title: "Client Detects Disconnect",
+      phase: "phase1",
+      desc: `The WebSocket <code>onclose</code> event fires in the Chrome Extension. The client detects the broken connection immediately.<br><br>
+        <strong>Auto-reconnect logic activates:</strong><br>
+        &bull; Exponential backoff: 1s, 2s, 4s, 8s...<br>
+        &bull; Max retries: 5 attempts<br>
+        &bull; Session ID preserved in <code>chrome.storage.session</code><br>
+        &bull; UI shows "Reconnecting..." indicator<br><br>
+        The doctor sees a brief "connection lost" banner but <strong>no data disappears</strong> from their screen.`,
+      nodes: ["client1","redis1","gcs1"],
+      dead: ["cloudrun1","tmp1"],
+      edges: [],
+      dots: [],
+      glow: [],
+      warn: "client1",
+    },
+    { /* 6 */
+      idx: 7, title: "Client Reconnects",
+      phase: "phase2",
+      desc: `Client opens a <strong>new WebSocket</strong> connection to <code>/ws</code>. Cloud Run auto-scales and spins up a fresh container.<br><br>
+        The SW restarts and finds an existing session_id in <code>chrome.storage.session</code>. Instead of <code>start_session</code>, it sends:<br><br>
+        <code>{"type":"session_resume","session_id":"abc-123-def-456"}</code><br><br>
+        The server looks up the session in Redis. If found, it enters <strong>recovery mode</strong>. If expired, it returns an <code>error</code> and FE notifies the doctor.`,
+      nodes: ["client2","cloudrun2","redis2","gcs2"],
+      dead: [],
+      edges: ["c2_cr2"],
+      dots: [{e:"c2_cr2",c:"#f59e0b",s:0.7,loop:true}],
+      glow: ["cloudrun2"],
+    },
+    { /* 7 */
+      idx: 8, title: "Server Hydrates from Redis",
+      phase: "phase2",
+      desc: `The new instance checks Redis for <code>session:{id}</code>.<br><br>
+        <strong>Found!</strong> The session hash still exists (TTL not expired).<br><br>
+        Server deserializes the full <code>ConsultationSession</code> from Redis and sends <code>session_resumed</code> back to the client:<br>
+        &bull; Patient info restored<br>
+        &bull; Transcript (all 15 chunks) restored<br>
+        &bull; Latest extraction result restored<br>
+        &bull; Chunk counter set to 15<br><br>
+        The server is now in the <strong>exact same logical state</strong> as before the crash.`,
+      nodes: ["client2","cloudrun2","redis2","gcs2"],
+      dead: [],
+      edges: ["c2_cr2","red2_cr2"],
+      dots: [{e:"red2_cr2",c:"#ef4444",s:0.55,loop:true}],
+      glow: ["redis2","cloudrun2"],
+    },
+    { /* 8 */
+      idx: 9, title: "Session Resumed",
+      phase: "phase2",
+      desc: `Session continues seamlessly from <strong>chunk #16</strong>.<br><br>
+        &bull; Previous transcript: <span style="color:#4ade80">preserved</span><br>
+        &bull; Previous extraction: <span style="color:#4ade80">preserved</span><br>
+        &bull; Patient info: <span style="color:#4ade80">preserved</span><br>
+        &bull; Doctor sees: <span style="color:#4ade80">no data loss</span><br><br>
+        New audio chunks append normally. The triple-write strategy continues. From the doctor's perspective, there was only a brief "reconnecting" blip.`,
+      nodes: ["client2","cloudrun2","redis2","gcs2"],
+      dead: [],
+      edges: ["c2_cr2","cr2_red","cr2_gcs"],
+      dots: [
+        {e:"c2_cr2",c:"#f59e0b",s:1,loop:true},
+        {e:"cr2_red",c:"#ef4444",s:0.8,loop:true,d:0.25},
+        {e:"cr2_gcs",c:"#22c55e",s:0.8,loop:true,d:0.5},
+      ],
+      glow: ["cloudrun2"],
+    },
+    { /* 9 */
+      idx: 10, title: "Session End: Combine from GCS",
+      phase: "phase2",
+      desc: `When the doctor stops the session, <code>combine_and_save()</code> runs on the new instance.<br><br>
+        Instead of reading from <code>/tmp</code> (which is gone), it reads chunks <strong>directly from GCS</strong>:<br><br>
+        <strong>1.</strong> Download individual chunks from GCS bucket<br>
+        <strong>2.</strong> Combine into final <code>doctor.wav</code> + <code>patient.wav</code><br>
+        <strong>3.</strong> Generate final <code>transcript.txt</code><br>
+        <strong>4.</strong> Upload permanent files back to GCS<br><br>
+        Complete session artifact -- <strong>as if the crash never happened</strong>.`,
+      nodes: ["client2","cloudrun2","redis2","gcs2"],
+      dead: [],
+      edges: ["gcs2_cr2","cr2_gcs"],
+      dots: [{e:"gcs2_cr2",c:"#22c55e",s:0.5,loop:true}],
+      glow: ["gcs2","cloudrun2"],
+    },
+  ];
+
+  /* ────────────────────────────────────────────
+     State
+  ──────────────────────────────────────────── */
+  let cur = 0;
+  let playing = false;
+  let playTimer = null;
+  let lastT = 0;
+  let dots = [];
+
+  /* ────────────────────────────────────────────
+     DOM refs
+  ──────────────────────────────────────────── */
+  const $svg        = document.getElementById("svg");
+  const $nodesL     = document.getElementById("nodesLayer");
+  const $edgesL     = document.getElementById("edgesLayer");
+  const $dotsL      = document.getElementById("dotsLayer");
+  const $fxL        = document.getElementById("fxLayer");
+  const $phaseL     = document.getElementById("phaseChrome");
+  const $bgGrid     = document.getElementById("bgGrid");
+  const $json       = document.getElementById("jsonOverlay");
+  const $flash      = document.getElementById("crashFlash");
+  const $stepLabel  = document.getElementById("stepLabel");
+  const $stepTitle  = document.getElementById("stepTitle");
+  const $stepDesc   = document.getElementById("stepDesc");
+  const $phaseBadge = document.getElementById("phaseBadge");
+  const $progFill   = document.getElementById("progressFill");
+  const $progText   = document.getElementById("progressText");
+  const $prev       = document.getElementById("btnPrev");
+  const $next       = document.getElementById("btnNext");
+  const $play       = document.getElementById("btnPlay");
+  const $playI      = document.getElementById("playIcon");
+  const $pauseI     = document.getElementById("pauseIcon");
+  const $playLbl    = document.getElementById("playLabel");
+
+  /* ────────────────────────────────────────────
+     Geometry helpers
+  ──────────────────────────────────────────── */
+  const cx = n => n.x + NW / 2;
+  const cy = n => n.y + NH / 2;
+
+  function edgePts(eid) {
+    const e = E[eid]; if (!e) return null;
+    const a = N[e.from], b = N[e.to];
+    if (!a || !b) return null;
+    const ax = cx(a), ay = cy(a), bx = cx(b), by = cy(b);
+    const dx = bx - ax, dy = by - ay;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    // push out from node center to edge of rounded rect
+    const hw = NW / 2 + 4, hh = NH / 2 + 4;
+    function outset(ox, oy, tx, ty) {
+      const ddx = tx - ox, ddy = ty - oy;
+      let t = Infinity;
+      if (ddx !== 0) t = Math.min(t, Math.abs(hw / ddx));
+      if (ddy !== 0) t = Math.min(t, Math.abs(hh / ddy));
+      if (!isFinite(t)) t = 1;
+      t = Math.min(t, 1);
+      return { x: ox + ddx * t, y: oy + ddy * t };
+    }
+    const s = outset(ax, ay, bx, by);
+    const d2 = outset(bx, by, ax, ay);
+    return { x1: s.x, y1: s.y, x2: d2.x, y2: d2.y, color: e.color, label: e.label };
+  }
+
+  const colorTag = { "#f59e0b":"amber", "#6366f1":"indigo", "#ef4444":"red", "#22c55e":"green", "#14b8a6":"teal", "#f97316":"orange" };
+
+  /* ────────────────────────────────────────────
+     Background grid
+  ──────────────────────────────────────────── */
+  function drawGrid() {
+    let html = "";
+    const step = 40;
+    for (let x = 0; x < W; x += step) html += `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="#cbd5e1" stroke-width="0.5"/>`;
+    for (let y = 0; y < H; y += step) html += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#cbd5e1" stroke-width="0.5"/>`;
+    $bgGrid.innerHTML = html;
+  }
+
+  /* ────────────────────────────────────────────
+     Phase chrome (divider + labels)
+  ──────────────────────────────────────────── */
+  function drawPhaseChrome() {
+    const mx = W / 2;
+    $phaseL.innerHTML = `
+      <line x1="${mx}" y1="20" x2="${mx}" y2="${H}" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="6,5" opacity="0.7"/>
+      <text x="${W*0.25}" y="38" text-anchor="middle" font-size="9" font-weight="700" fill="#334155" letter-spacing="2" text-transform="uppercase" style="text-transform:uppercase">PHASE 1  --  Normal Operation</text>
+      <text x="${W*0.75}" y="38" text-anchor="middle" font-size="9" font-weight="700" fill="#334155" letter-spacing="2" text-transform="uppercase" style="text-transform:uppercase">PHASE 2  --  Recovery</text>
+    `;
+  }
+
+  /* ────────────────────────────────────────────
+     Render nodes
+  ──────────────────────────────────────────── */
+  function renderNodes() {
+    $nodesL.innerHTML = "";
+    const s = steps[cur];
+    const visible = new Set([...(s.nodes || []), ...(s.dead || [])]);
+    const deadSet = new Set(s.dead || []);
+    const glowSet = new Set(s.glow || []);
+
+    for (const id of Object.keys(N)) {
+      if (!visible.has(id)) continue;
+      const n = N[id];
+      const isDead = deadSet.has(id);
+      const isGlow = glowSet.has(id);
+      const isWarn = s.warn === id;
+
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("transform", `translate(${n.x},${n.y})`);
+
+      /* Glow halo for highlighted nodes */
+      if (isGlow && !isDead) {
+        const h = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        h.setAttribute("x", -6); h.setAttribute("y", -6);
+        h.setAttribute("width", NW + 12); h.setAttribute("height", NH + 12);
+        h.setAttribute("rx", NR + 4); h.setAttribute("fill", "none");
+        h.setAttribute("stroke", n.color); h.setAttribute("stroke-width", "2");
+        h.innerHTML = `<animate attributeName="opacity" values="0.2;0.55;0.2" dur="2.2s" repeatCount="indefinite"/>`;
+        g.appendChild(h);
+      }
+
+      /* Warning pulse for disconnect detection */
+      if (isWarn) {
+        const wp = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        wp.setAttribute("x", -8); wp.setAttribute("y", -8);
+        wp.setAttribute("width", NW + 16); wp.setAttribute("height", NH + 16);
+        wp.setAttribute("rx", NR + 6); wp.setAttribute("fill", "none");
+        wp.setAttribute("stroke", "#f59e0b"); wp.setAttribute("stroke-width", "2.5");
+        wp.innerHTML = `<animate attributeName="opacity" values="0;0.8;0" dur="1.2s" repeatCount="indefinite"/>`;
+        g.appendChild(wp);
+      }
+
+      /* Main rect */
+      const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      r.setAttribute("width", NW); r.setAttribute("height", NH); r.setAttribute("rx", NR);
+      if (isDead) {
+        r.setAttribute("fill", "#1a0a10"); r.setAttribute("stroke", "#ef4444");
+        r.setAttribute("stroke-width", "1.5"); r.setAttribute("stroke-dasharray", "5,4");
+        r.setAttribute("opacity", "0.45");
+      } else {
+        r.setAttribute("fill", "#1e293b");
+        r.setAttribute("stroke", isGlow ? n.color : (isWarn ? "#f59e0b" : "#334155"));
+        r.setAttribute("stroke-width", isGlow || isWarn ? "1.5" : "1");
+      }
+      g.appendChild(r);
+
+      /* Top accent bar */
+      const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bar.setAttribute("y", 0); bar.setAttribute("width", NW); bar.setAttribute("height", 3.5);
+      bar.setAttribute("rx", "1.5"); bar.setAttribute("fill", isDead ? "#ef4444" : n.color);
+      bar.setAttribute("opacity", isDead ? "0.3" : "0.9");
+      g.appendChild(bar);
+
+      /* Icon */
+      const ic = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      ic.setAttribute("x", 10); ic.setAttribute("y", 34); ic.setAttribute("font-size", "18");
+      ic.setAttribute("opacity", isDead ? "0.25" : "1");
+      ic.textContent = isDead ? "\u274C" : (isWarn ? "\u26A0\uFE0F" : n.icon);
+      g.appendChild(ic);
+
+      /* Label */
+      const lb = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      lb.setAttribute("x", 34); lb.setAttribute("y", 28); lb.setAttribute("font-size", "11");
+      lb.setAttribute("font-weight", "700"); lb.setAttribute("fill", isDead ? "#ef4444" : "#f1f5f9");
+      lb.setAttribute("opacity", isDead ? "0.45" : "1");
+      lb.textContent = isDead ? n.label + " (DEAD)" : n.label;
+      g.appendChild(lb);
+
+      /* Sub */
+      const sb = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      sb.setAttribute("x", 34); sb.setAttribute("y", 42); sb.setAttribute("font-size", "8.5");
+      sb.setAttribute("fill", "#64748b"); sb.setAttribute("opacity", isDead ? "0.3" : "0.85");
+      sb.textContent = isDead ? "DESTROYED" : n.sub;
+      g.appendChild(sb);
+
+      /* Dead cross-out */
+      if (isDead) {
+        for (const [x1,y1,x2,y2] of [[0,0,NW,NH],[NW,0,0,NH]]) {
+          const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          l.setAttribute("x1",x1); l.setAttribute("y1",y1);
+          l.setAttribute("x2",x2); l.setAttribute("y2",y2);
+          l.setAttribute("stroke","#ef4444"); l.setAttribute("stroke-width","1.5"); l.setAttribute("opacity","0.4");
+          g.appendChild(l);
+        }
+      }
+
+      $nodesL.appendChild(g);
+    }
+  }
+
+  /* ────────────────────────────────────────────
+     Render edges
+  ──────────────────────────────────────────── */
+  function renderEdges() {
+    $edgesL.innerHTML = "";
+    const s = steps[cur];
+    for (const eid of (s.edges || [])) {
+      const p = edgePts(eid); if (!p) continue;
+      const tag = colorTag[p.color] || "amber";
+
+      /* Glow shadow */
+      const sh = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      sh.setAttribute("x1",p.x1); sh.setAttribute("y1",p.y1);
+      sh.setAttribute("x2",p.x2); sh.setAttribute("y2",p.y2);
+      sh.setAttribute("stroke",p.color); sh.setAttribute("stroke-width","5"); sh.setAttribute("opacity","0.1");
+      sh.setAttribute("stroke-linecap","round");
+      $edgesL.appendChild(sh);
+
+      /* Main line */
+      const ln = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      ln.setAttribute("x1",p.x1); ln.setAttribute("y1",p.y1);
+      ln.setAttribute("x2",p.x2); ln.setAttribute("y2",p.y2);
+      ln.setAttribute("stroke",p.color); ln.setAttribute("stroke-width","1.5"); ln.setAttribute("opacity","0.6");
+      ln.setAttribute("stroke-linecap","round");
+      ln.setAttribute("marker-end", `url(#arr-${tag})`);
+      $edgesL.appendChild(ln);
+
+      /* Label */
+      const mx = (p.x1 + p.x2) / 2, my = (p.y1 + p.y2) / 2;
+      const dx = p.x2 - p.x1, dy = p.y2 - p.y1;
+      // offset label perpendicular to edge
+      const len = Math.sqrt(dx*dx+dy*dy)||1;
+      const nx = -dy/len * 12, ny = dx/len * 12;
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", mx + nx); t.setAttribute("y", my + ny);
+      t.setAttribute("text-anchor","middle"); t.setAttribute("dominant-baseline","middle");
+      t.setAttribute("font-size","9"); t.setAttribute("font-weight","600");
+      t.setAttribute("fill", p.color); t.setAttribute("opacity","0.7");
+      t.textContent = p.label;
+      $edgesL.appendChild(t);
+    }
+  }
+
+  /* ────────────────────────────────────────────
+     Animated traveling dots
+  ──────────────────────────────────────────── */
+  function initDots() {
+    dots = [];
+    const s = steps[cur];
+    for (const d of (s.dots || [])) {
+      dots.push({ eid: d.e, color: d.c, speed: d.s || 1, loop: d.loop !== false, t: -(d.d || 0), alive: true });
+    }
+  }
+
+  function tickDots(dt) {
+    $dotsL.innerHTML = "";
+    for (const d of dots) {
+      if (!d.alive) continue;
+      d.t += dt * d.speed * 0.45;
+      if (d.t > 1) { if (d.loop) d.t -= 1; else { d.alive = false; continue; } }
+      if (d.t < 0) continue;
+
+      const p = edgePts(d.eid); if (!p) continue;
+      const x = p.x1 + (p.x2 - p.x1) * d.t;
+      const y = p.y1 + (p.y2 - p.y1) * d.t;
+
+      /* Outer glow */
+      const g1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      g1.setAttribute("cx",x); g1.setAttribute("cy",y); g1.setAttribute("r","10");
+      g1.setAttribute("fill",d.color); g1.setAttribute("opacity","0.15");
+      $dotsL.appendChild(g1);
+
+      /* Mid glow */
+      const g2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      g2.setAttribute("cx",x); g2.setAttribute("cy",y); g2.setAttribute("r","5.5");
+      g2.setAttribute("fill",d.color); g2.setAttribute("opacity","0.4");
+      $dotsL.appendChild(g2);
+
+      /* Core dot */
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r","3");
+      c.setAttribute("fill","#fff"); c.setAttribute("opacity","0.9");
+      $dotsL.appendChild(c);
+
+      /* Trail */
+      const tt = Math.max(0, d.t - 0.07);
+      const tx = p.x1 + (p.x2 - p.x1) * tt;
+      const ty = p.y1 + (p.y2 - p.y1) * tt;
+      const tr = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      tr.setAttribute("cx",tx); tr.setAttribute("cy",ty); tr.setAttribute("r","2");
+      tr.setAttribute("fill",d.color); tr.setAttribute("opacity","0.35");
+      $dotsL.appendChild(tr);
+
+      const tt2 = Math.max(0, d.t - 0.14);
+      const tx2 = p.x1 + (p.x2 - p.x1) * tt2;
+      const ty2 = p.y1 + (p.y2 - p.y1) * tt2;
+      const tr2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      tr2.setAttribute("cx",tx2); tr2.setAttribute("cy",ty2); tr2.setAttribute("r","1.2");
+      tr2.setAttribute("fill",d.color); tr2.setAttribute("opacity","0.15");
+      $dotsL.appendChild(tr2);
+    }
+  }
+
+  /* ────────────────────────────────────────────
+     Crash explosion effects
+  ──────────────────────────────────────────── */
+  function renderFX() {
+    $fxL.innerHTML = "";
+    const s = steps[cur];
+    if (!s.crash) return;
+
+    const targets = ["cloudrun1","tmp1"];
+    for (const nid of targets) {
+      const n = N[nid]; if (!n) continue;
+      const x = cx(n), y = cy(n);
+
+      /* Expanding rings */
+      for (let i = 0; i < 4; i++) {
+        const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        ring.setAttribute("cx",x); ring.setAttribute("cy",y);
+        ring.setAttribute("fill","none"); ring.setAttribute("stroke","#ef4444");
+        const maxR = 50 + i * 22;
+        const dur = 1.8 + i * 0.25;
+        const begin = i * 0.25;
+        ring.innerHTML = `
+          <animate attributeName="r" values="5;${maxR}" dur="${dur}s" begin="${begin}s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.7;0" dur="${dur}s" begin="${begin}s" repeatCount="indefinite"/>
+          <animate attributeName="stroke-width" values="3;0.3" dur="${dur}s" begin="${begin}s" repeatCount="indefinite"/>
+        `;
+        $fxL.appendChild(ring);
+      }
+
+      /* Debris particles */
+      for (let i = 0; i < 12; i++) {
+        const angle = (Math.PI * 2 / 12) * i + Math.random() * 0.3;
+        const dist = 40 + Math.random() * 50;
+        const ex = x + Math.cos(angle) * dist;
+        const ey = y + Math.sin(angle) * dist;
+        const sz = 1.5 + Math.random() * 2;
+        const dur = 1 + Math.random() * 0.8;
+        const p = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        p.setAttribute("r", sz);
+        p.setAttribute("fill", i % 3 === 0 ? "#fbbf24" : "#ef4444");
+        p.innerHTML = `
+          <animate attributeName="cx" values="${x};${ex}" dur="${dur}s" repeatCount="indefinite"/>
+          <animate attributeName="cy" values="${y};${ey}" dur="${dur}s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="1;0" dur="${dur}s" repeatCount="indefinite"/>
+        `;
+        $fxL.appendChild(p);
+      }
+
+      /* Central flash */
+      const flash = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      flash.setAttribute("cx",x); flash.setAttribute("cy",y);
+      flash.setAttribute("fill","#ef4444");
+      flash.innerHTML = `
+        <animate attributeName="r" values="20;3" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.4;0.05" dur="2s" repeatCount="indefinite"/>
+      `;
+      $fxL.appendChild(flash);
+    }
+  }
+
+  /* ────────────────────────────────────────────
+     JSON overlay positioning
+  ──────────────────────────────────────────── */
+  function updateJson() {
+    const s = steps[cur];
+    if (s.showJson) {
+      const n = N.redis1;
+      $json.style.left = (n.x + NW + 18) + "px";
+      $json.style.top  = (n.y - 30) + "px";
+      $json.classList.add("visible");
+    } else {
+      $json.classList.remove("visible");
+    }
+  }
+
+  /* ────────────────────────────────────────────
+     Crash flash
+  ──────────────────────────────────────────── */
+  function triggerFlash() {
+    if (!steps[cur].crash) return;
+    const n = N.cloudrun1;
+    if (n) {
+      const pct_x = ((cx(n)) / W * 100).toFixed(1);
+      const pct_y = ((cy(n)) / H * 100).toFixed(1);
+      $flash.style.setProperty("--cx", pct_x + "%");
+      $flash.style.setProperty("--cy", pct_y + "%");
+    }
+    $flash.classList.add("active");
+    setTimeout(() => $flash.classList.remove("active"), 500);
+  }
+
+  /* ────────────────────────────────────────────
+     Info panel update
+  ──────────────────────────────────────────── */
+  function updateInfo() {
+    const s = steps[cur];
+    $stepLabel.textContent = `Step ${s.idx} of ${steps.length}`;
+    $stepTitle.textContent = s.title;
+    $stepTitle.style.color = s.crash ? "#ef4444" : (s.phase === "phase2" ? "#5eead4" : "#f8fafc");
+    $stepDesc.innerHTML = s.desc;
+
+    // Phase badge
+    const ph = s.phase || "phase1";
+    let badgeHtml = "";
+    if (ph === "phase1") badgeHtml = `<span class="step-phase-badge phase1">Phase 1: Normal Operation</span>`;
+    else if (ph === "crash") badgeHtml = `<span class="step-phase-badge crash">CRASH EVENT</span>`;
+    else badgeHtml = `<span class="step-phase-badge phase2">Phase 2: Recovery</span>`;
+    $phaseBadge.innerHTML = badgeHtml;
+
+    // Progress
+    $progFill.style.width = ((s.idx / steps.length) * 100) + "%";
+    $progText.textContent = `${s.idx} / ${steps.length}`;
+
+    // Button state
+    $prev.disabled = cur === 0;
+    $next.disabled = cur === steps.length - 1;
+  }
+
+  /* ────────────────────────────────────────────
+     Master step transition
+  ──────────────────────────────────────────── */
+  function goTo(idx) {
+    if (idx < 0 || idx >= steps.length) return;
+    cur = idx;
+    measure();
+    N = layoutNodes();
+    E = buildEdges();
+    drawGrid();
+    drawPhaseChrome();
+    renderNodes();
+    renderEdges();
+    initDots();
+    renderFX();
+    updateJson();
+    triggerFlash();
+    updateInfo();
+  }
+
+  /* ────────────────────────────────────────────
+     Animation loop
+  ──────────────────────────────────────────── */
+  function startLoop() {
+    lastT = performance.now();
+    (function frame(now) {
+      const dt = Math.min((now - lastT) / 1000, 0.1);
+      lastT = now;
+      tickDots(dt);
+      requestAnimationFrame(frame);
+    })(lastT);
+  }
+
+  /* ────────────────────────────────────────────
+     Auto-play
+  ──────────────────────────────────────────── */
+  function setPlaying(v) {
+    playing = v;
+    $playI.style.display  = playing ? "none" : "inline";
+    $pauseI.style.display = playing ? "inline" : "none";
+    $playLbl.textContent  = playing ? "Pause" : "Play";
+    if (playing) schedNext(); else clearTimeout(playTimer);
+  }
+  function schedNext() {
+    clearTimeout(playTimer);
+    if (!playing) return;
+    const ms = steps[cur].crash ? 5500 : 4200;
+    playTimer = setTimeout(() => {
+      if (cur < steps.length - 1) { goTo(cur + 1); schedNext(); }
+      else setPlaying(false);
+    }, ms);
+  }
+
+  /* ────────────────────────────────────────────
+     Events
+  ──────────────────────────────────────────── */
+  $prev.addEventListener("click", () => { setPlaying(false); goTo(cur - 1); });
+  $next.addEventListener("click", () => { setPlaying(false); goTo(cur + 1); });
+  $play.addEventListener("click", () => setPlaying(!playing));
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft"  || e.key === "ArrowUp")   { e.preventDefault(); setPlaying(false); goTo(cur - 1); }
+    if (e.key === "ArrowRight" || e.key === "ArrowDown")  { e.preventDefault(); setPlaying(false); goTo(cur + 1); }
+    if (e.key === " ")                                     { e.preventDefault(); setPlaying(!playing); }
+  });
+
+  window.addEventListener("resize", () => {
+    measure(); N = layoutNodes(); E = buildEdges();
+    drawGrid(); drawPhaseChrome(); renderNodes(); renderEdges(); renderFX(); updateJson();
+  });
+
+  /* ────────────────────────────────────────────
+     Init
+  ──────────────────────────────────────────── */
+  goTo(0);
+  startLoop();
+
+})();
+</script>
+</body>
+</html>

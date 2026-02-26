@@ -1,0 +1,136 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  GCP_PROJECT_ID: loophealth-patient-dev
+  GCP_REGION: asia-south1
+  ARTIFACT_REGISTRY_HOST: asia-south1-docker.pkg.dev
+  ARTIFACT_REPOSITORY: cloud-run-source-deploy
+  SERVICE_NAME: loop-scribe
+  IMAGE: asia-south1-docker.pkg.dev/loophealth-patient-dev/cloud-run-source-deploy/loop-scribe
+
+jobs:
+  # ──────────────────────────────────────────────
+  # CI Jobs (run on all pushes and PRs)
+  # ──────────────────────────────────────────────
+
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ruff
+
+      - name: Check linting
+        run: ruff check src/
+
+      - name: Check formatting
+        run: ruff format --check src/
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install mypy
+
+      - name: Run mypy
+        run: mypy src/ --ignore-missing-imports
+
+  validate:
+    name: Validate Imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate core imports
+        run: |
+          python -c "from src.config.settings import load_settings; print('Settings OK')"
+          python -c "from src.models.extraction import ExtractionResult; print('Models OK')"
+          python -c "from src.models.patient import Patient; print('Patient OK')"
+          python -c "from src.models.websocket_messages import StartSessionMessage, AudioChunkMessage, StopSessionMessage, ExtractionUpdateMessage, ErrorMessage; print('Messages OK')"
+          python -c "from src.providers.extraction.gemini_gpt import GeminiGPTProvider; print('Gemini provider OK')"
+          python -c "from src.providers.extraction.groq_gpt import GroqGPTProvider; print('Groq provider OK')"
+
+  # ──────────────────────────────────────────────
+  # Deploy (only on push to main, after CI passes)
+  # ──────────────────────────────────────────────
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: [lint, type-check, validate]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.DEV_HC_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ARTIFACT_REGISTRY_HOST }}
+          username: _json_key
+          password: ${{ secrets.DEV_HC_SERVICE_ACCOUNT_KEY }}
+
+      - name: Build Docker image
+        run: docker build -t ${{ env.IMAGE }}:${{ github.sha }} -t ${{ env.IMAGE }}:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.IMAGE }}:${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed
+
+      - name: Show deployed URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.GCP_REGION }} --format="value(status.url)")
+          BRANCH=${GITHUB_REF#refs/heads/}
+          echo "## 🚀 ${BRANCH} → DEV" >> $GITHUB_STEP_SUMMARY
+          echo "**Service:** ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** $URL" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ env.IMAGE }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
