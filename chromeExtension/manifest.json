@@ -12,7 +12,8 @@
   "host_permissions": [
     "https://meet.google.com/*",
     "https://app.zoom.us/*",
-    "https://zoom.us/*"
+    "https://zoom.us/*",
+    "https://loop-scribe-509581839768.asia-south1.run.app/*"
   ],
   "background": {
     "service_worker": "background.js"
