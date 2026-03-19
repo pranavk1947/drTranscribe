@@ -10,12 +10,14 @@
  * 6. Store/load server URL from chrome.storage.local
  */
 
-const DEFAULT_SERVER_URL = 'http://localhost:8000';
+const DEFAULT_SERVER_URL = 'https://loop-scribe-509581839768.asia-south1.run.app';
 
 let websocket = null;
 let activeTabId = null;
 let isSessionActive = false;
+let isSessionPaused = false;
 let hasOffscreenDocument = false;
+let currentAppointmentId = null;
 
 // ─── Server URL Management ───────────────────────────────────────────
 
@@ -86,7 +88,7 @@ async function closeOffscreenDocument() {
 
 // ─── WebSocket Management ───────────────────────────────────────────
 
-async function connectWebSocket(serverUrl, patientInfo) {
+async function connectWebSocket(serverUrl, patientInfo, appointmentId) {
     return new Promise((resolve, reject) => {
         if (!patientInfo?.name || !patientInfo?.age || !patientInfo?.gender) {
             reject(new Error('Invalid patient information'));
@@ -97,29 +99,39 @@ async function connectWebSocket(serverUrl, patientInfo) {
         const wsHost = serverUrl.replace(/^https?:\/\//, '');
         const wsUrl = `${wsProtocol}://${wsHost}/ws`;
 
+        // Generate an appointment_id for loop-scribe if not provided
+        currentAppointmentId = appointmentId || `drt-${Date.now()}`;
+
         console.log('[BG] Connecting WebSocket to:', wsUrl);
         websocket = new WebSocket(wsUrl);
 
         websocket.onopen = () => {
             console.log('[BG] WebSocket connected');
 
-            // Send start_session message
+            // Send start_session message (loop-scribe format)
             const startMessage = {
                 type: 'start_session',
-                patient: patientInfo
+                appointment_id: currentAppointmentId
             };
             websocket.send(JSON.stringify(startMessage));
-            console.log('[BG] Sent start_session:', patientInfo);
+            console.log('[BG] Sent start_session with appointment_id:', currentAppointmentId);
             resolve();
         };
 
         websocket.onmessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
-                console.log('[BG] Received from backend:', message.type);
+                console.log('[BG] Received from backend:', message.type, message);
 
-                // Forward extraction updates and errors to content script
-                if (activeTabId && (message.type === 'extraction_update' || message.type === 'error')) {
+                // Forward extraction updates, transcription updates, session lifecycle, and errors to content script
+                if (activeTabId && (
+                    message.type === 'extraction_update' ||
+                    message.type === 'transcription_update' ||
+                    message.type === 'session_started' ||
+                    message.type === 'session_paused' ||
+                    message.type === 'session_resumed' ||
+                    message.type === 'error'
+                )) {
                     chrome.tabs.sendMessage(activeTabId, message).catch(err => {
                         console.warn('[BG] Failed to send to content script:', err.message);
                     });
@@ -202,26 +214,49 @@ function disconnectWebSocket() {
             }
         }, 5000);
 
-        // Send stop_session
-        ws.send(JSON.stringify({ type: 'stop_session' }));
-        console.log('[BG] Sent stop_session, waiting for server ack...');
+        // Send stop_session (loop-scribe requires appointment_id)
+        ws.send(JSON.stringify({ type: 'stop_session', appointment_id: currentAppointmentId }));
+        console.log('[BG] Sent stop_session with appointment_id:', currentAppointmentId, 'waiting for server ack...');
     });
 }
 
 function sendAudioChunk(audioData, source) {
+    if (isSessionPaused) return; // Drop audio chunks while paused
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         const message = {
             type: 'audio_chunk',
             audio_data: audioData,
-            source: source || 'unknown'
+            source: source || 'mic'
         };
         websocket.send(JSON.stringify(message));
     }
 }
 
+function sendPauseSession() {
+    if (websocket && websocket.readyState === WebSocket.OPEN && currentAppointmentId) {
+        websocket.send(JSON.stringify({
+            type: 'pause_session',
+            appointment_id: currentAppointmentId
+        }));
+        isSessionPaused = true;
+        console.log('[BG] Sent pause_session');
+    }
+}
+
+function sendResumeSession() {
+    if (websocket && websocket.readyState === WebSocket.OPEN && currentAppointmentId) {
+        websocket.send(JSON.stringify({
+            type: 'session_resume',
+            appointment_id: currentAppointmentId
+        }));
+        isSessionPaused = false;
+        console.log('[BG] Sent session_resume (unpause)');
+    }
+}
+
 // ─── Session Management ─────────────────────────────────────────────
 
-async function startSession(tabId, patientInfo) {
+async function startSession(tabId, patientInfo, appointmentId) {
     try {
         activeTabId = tabId;
 
@@ -230,7 +265,7 @@ async function startSession(tabId, patientInfo) {
         const audioConfig = await fetchAudioConfig(serverUrl);
 
         // 2. Connect WebSocket
-        await connectWebSocket(serverUrl, patientInfo);
+        await connectWebSocket(serverUrl, patientInfo, appointmentId);
 
         // 3. Get tab capture stream ID
         const streamId = await chrome.tabCapture.getMediaStreamId({
@@ -249,6 +284,7 @@ async function startSession(tabId, patientInfo) {
         });
 
         isSessionActive = true;
+        isSessionPaused = false;
         console.log('[BG] Session started for tab:', tabId);
 
         // Notify content script (include audio config for mic capture)
@@ -270,6 +306,8 @@ async function startSession(tabId, patientInfo) {
 async function stopSession() {
     console.log('[BG] Stopping session');
 
+    const tabId = activeTabId;
+
     // 1. Tell offscreen to stop capturing
     try {
         await chrome.runtime.sendMessage({ type: 'stop-capture' });
@@ -277,21 +315,21 @@ async function stopSession() {
         // Offscreen may already be gone
     }
 
-    // 2. Disconnect WebSocket (sends stop_session, waits for server ack)
-    await disconnectWebSocket();
-
-    // 3. Close offscreen document
-    await closeOffscreenDocument();
-
-    const tabId = activeTabId;
+    // 2. Notify content script immediately (don't wait for server ack)
     isSessionActive = false;
     activeTabId = null;
-
-    // 4. Notify content script
     if (tabId) {
         chrome.tabs.sendMessage(tabId, { type: 'session-ended' }).catch(() => {});
     }
 
+    // 3. Disconnect WebSocket (sends stop_session, waits for server ack)
+    await disconnectWebSocket();
+
+    // 4. Close offscreen document
+    await closeOffscreenDocument();
+
+    currentAppointmentId = null;
+    isSessionPaused = false;
     console.log('[BG] Session stopped');
 }
 
@@ -300,7 +338,7 @@ async function stopSession() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Messages from content script
     if (message.type === 'start-session') {
-        startSession(sender.tab.id, message.patient)
+        startSession(sender.tab.id, message.patient, message.appointmentId)
             .then(() => sendResponse({ ok: true }))
             .catch(err => sendResponse({ ok: false, error: err.message }));
         return true; // async response
@@ -311,6 +349,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .then(() => sendResponse({ ok: true }))
             .catch(err => sendResponse({ ok: false, error: err.message }));
         return true; // async response
+    }
+
+    if (message.type === 'pause-session') {
+        sendPauseSession();
+        // Pause tab audio capture in offscreen
+        chrome.runtime.sendMessage({ type: 'pause-capture' }).catch(() => {});
+        sendResponse({ ok: true });
+        return false;
+    }
+
+    if (message.type === 'resume-session') {
+        sendResumeSession();
+        // Resume tab audio capture in offscreen
+        chrome.runtime.sendMessage({ type: 'resume-capture' }).catch(() => {});
+        sendResponse({ ok: true });
+        return false;
     }
 
     // Messages from offscreen document or content script (audio)
@@ -340,6 +394,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'get-status') {
         sendResponse({
             isSessionActive: isSessionActive,
+            isSessionPaused: isSessionPaused,
             activeTabId: activeTabId
         });
         return false;

@@ -15,6 +15,7 @@ let audioContext = null;
 let tabStream = null;
 let workletNode = null;
 let isCapturing = false;
+let isPaused = false;
 let echoAudioElement = null;
 
 /**
@@ -167,6 +168,7 @@ function downsample(samples, fromRate, toRate) {
  * Handle audio chunk from AudioWorklet - downsample, encode to WAV, send to background
  */
 function handleAudioChunk(samples, nativeSr) {
+    if (isPaused) return; // Drop tab audio chunks while session is paused
     try {
         // Downsample from native rate (48kHz) to target rate (16kHz)
         const downsampled = downsample(samples, nativeSr, targetSampleRate);
@@ -244,9 +246,19 @@ function stopCapture() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'start-capture') {
         startCapture(message.streamId, message.audioConfig);
+        isPaused = false;
         sendResponse({ ok: true });
     } else if (message.type === 'stop-capture') {
         stopCapture();
+        isPaused = false;
+        sendResponse({ ok: true });
+    } else if (message.type === 'pause-capture') {
+        isPaused = true;
+        console.log('[Offscreen] Tab audio paused (chunks will be dropped)');
+        sendResponse({ ok: true });
+    } else if (message.type === 'resume-capture') {
+        isPaused = false;
+        console.log('[Offscreen] Tab audio resumed');
         sendResponse({ ok: true });
     }
     return false;

@@ -532,17 +532,19 @@
         // ─── Pause / Resume ────────────────────────────────
         pauseBtn.addEventListener('click', () => {
             if (isPaused) {
-                // Resume
+                // Resume: tell backend to unpause extraction, restart mic + tab audio
                 isPaused = false;
                 pauseBtn.textContent = 'Pause';
-                setStatus('Recording', 'recording');
+                setStatus('Resuming...', 'connecting');
+                chrome.runtime.sendMessage({ type: 'resume-session' });
                 startMicCapture();
             } else {
-                // Pause
+                // Pause: tell backend to pause extraction, stop mic + tab audio
                 isPaused = true;
                 pauseBtn.textContent = 'Resume';
-                setStatus('Paused', '');
+                setStatus('Pausing...', 'connecting');
                 stopMicCapture();
+                chrome.runtime.sendMessage({ type: 'pause-session' });
             }
         });
 
@@ -873,6 +875,20 @@
                 if (message.reason) {
                     console.warn('[drT] Session ended:', message.reason);
                 }
+                break;
+
+            case 'session_paused':
+                setStatus('Paused', '');
+                console.log('[drT] Session paused (server confirmed)');
+                break;
+
+            case 'session_resumed':
+                setStatus('Recording', 'recording');
+                // Update extraction from server state if provided
+                if (message.extraction) {
+                    updateExtractionResults(message.extraction);
+                }
+                console.log('[drT] Session resumed (server confirmed)');
                 break;
 
             case 'extraction_update':
