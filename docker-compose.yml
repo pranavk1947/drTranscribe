@@ -3,11 +3,12 @@ version: '3.8'
 services:
   drtranscribe:
     build: .
-    container_name: drtranscribe-mvp
+    container_name: drtranscribe
     ports:
       - "8000:8000"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    env_file:
+      - .env
     volumes:
       - ./logs:/app/logs
+      - ./data:/app/data
     restart: unless-stopped

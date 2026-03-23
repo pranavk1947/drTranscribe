@@ -1,5 +1,5 @@
 /**
- * Content Script - Multi-platform overlay for MedLog
+ * Content Script - Multi-platform overlay for drTranscribe
  *
  * Supports Google Meet and Zoom Web Client.
  * Injects a non-intrusive floating badge on meeting pages.
@@ -239,14 +239,14 @@
         badge.id = 'drt-badge';
         badge.className = 'drt-badge drt-badge-detected';
 
-        // Use MedLog logo image
+        // Use drTranscribe logo image
         const logoImg = document.createElement('img');
         logoImg.src = chrome.runtime.getURL('icons/logo.png');
-        logoImg.alt = 'MedLog';
+        logoImg.alt = 'drTranscribe';
         logoImg.className = 'drt-badge-logo';
         badge.appendChild(logoImg);
 
-        badge.title = 'MedLog - Click to open';
+        badge.title = 'drTranscribe - Click to open';
         badge.addEventListener('click', async () => {
             const panel = document.getElementById('drt-panel');
             if (panel) {
@@ -272,8 +272,8 @@
         panel.innerHTML = `
             <div class="drt-header" id="drt-header">
                 <div class="drt-brand">
-                    <div class="drt-logo-icon">M</div>
-                    <span class="drt-logo">MedLog</span>
+                    <div class="drt-logo-icon">drT</div>
+                    <span class="drt-logo">drTranscribe</span>
                     <span class="drt-status" id="drt-status">Ready</span>
                 </div>
                 <div class="drt-controls">
@@ -365,7 +365,7 @@
             </div>
 
             <div class="drt-footer">
-                <span class="drt-footer-version">MedLog v2.1 &middot; HIPAA Compliant</span>
+                <span class="drt-footer-version">drTranscribe v2.1</span>
                 <span class="drt-footer-status" id="drt-footer-status">&#x25CF; Not Recording</span>
             </div>
         `;

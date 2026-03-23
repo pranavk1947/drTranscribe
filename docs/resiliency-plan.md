@@ -266,7 +266,7 @@ resilience:
     circuit_breaker_reset_timeout: 60
 
 audio_storage:
-  gcs_bucket: "${GCS_AUDIO_BUCKET:loop-scribe-audio}"
+  gcs_bucket: "${GCS_AUDIO_BUCKET:drtranscribe-audio}"
   upload_immediately: true
 ```
 

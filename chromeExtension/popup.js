@@ -1,4 +1,4 @@
-const DEFAULT_SERVER_URL = 'https://loop-scribe-509581839768.asia-south1.run.app';
+const DEFAULT_SERVER_URL = 'http://localhost:8080';
 
 const serverUrlInput = document.getElementById('server-url');
 const doctorNameInput = document.getElementById('doctor-name');

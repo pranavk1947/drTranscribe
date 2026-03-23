@@ -1,4 +1,4 @@
-# WebSocket vs SSE: Comparison for drTranscribe (MedLog)
+# WebSocket vs SSE: Comparison for drTranscribe
 
 ## Overview
 

@@ -9,7 +9,8 @@ venv/
 ENV/
 build/
 develop-eggs/
-dist/
+dist/*
+!dist/drTranscribe-extension.zip
 downloads/
 eggs/
 .eggs/

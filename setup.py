@@ -16,12 +16,12 @@ requirements = [req.strip() for req in requirements if req.strip() and not req.s
 setup(
     name="drtranscribe",
     version="1.0.0",
-    author="Loop Health",
-    author_email="info@loophealth.com",
-    description="AI-powered medical transcription and processing system",
+    author="Pranav Kumar",
+    author_email="",
+    description="AI-powered medical transcription and clinical data extraction",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/loophealth/drtranscribe",
+    url="https://github.com/pranavk1947/drTranscribe",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     classifiers=[
@@ -73,8 +73,7 @@ setup(
     zip_safe=False,
     keywords="medical, transcription, ai, nlp, healthcare, hipaa",
     project_urls={
-        "Bug Reports": "https://github.com/loophealth/drtranscribe/issues",
-        "Source": "https://github.com/loophealth/drtranscribe",
-        "Documentation": "https://drtranscribe.readthedocs.io/",
+        "Bug Reports": "https://github.com/pranavk1947/drTranscribe/issues",
+        "Source": "https://github.com/pranavk1947/drTranscribe",
     },
 )

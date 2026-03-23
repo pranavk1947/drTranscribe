@@ -10,7 +10,7 @@
  * 6. Store/load server URL from chrome.storage.local
  */
 
-const DEFAULT_SERVER_URL = 'https://loop-scribe-509581839768.asia-south1.run.app';
+const DEFAULT_SERVER_URL = 'http://localhost:8080';
 
 let websocket = null;
 let activeTabId = null;
@@ -99,7 +99,7 @@ async function connectWebSocket(serverUrl, patientInfo, appointmentId) {
         const wsHost = serverUrl.replace(/^https?:\/\//, '');
         const wsUrl = `${wsProtocol}://${wsHost}/ws`;
 
-        // Generate an appointment_id for loop-scribe if not provided
+        // Generate an appointment_id if not provided
         currentAppointmentId = appointmentId || `drt-${Date.now()}`;
 
         console.log('[BG] Connecting WebSocket to:', wsUrl);
@@ -108,7 +108,7 @@ async function connectWebSocket(serverUrl, patientInfo, appointmentId) {
         websocket.onopen = () => {
             console.log('[BG] WebSocket connected');
 
-            // Send start_session message (loop-scribe format)
+            // Send start_session message
             const startMessage = {
                 type: 'start_session',
                 appointment_id: currentAppointmentId
@@ -214,7 +214,7 @@ function disconnectWebSocket() {
             }
         }, 5000);
 
-        // Send stop_session (loop-scribe requires appointment_id)
+        // Send stop_session with appointment_id
         ws.send(JSON.stringify({ type: 'stop_session', appointment_id: currentAppointmentId }));
         console.log('[BG] Sent stop_session with appointment_id:', currentAppointmentId, 'waiting for server ack...');
     });

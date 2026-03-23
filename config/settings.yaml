@@ -28,7 +28,7 @@ claude:
 # Azure OpenAI Configuration
 azure_openai:
   api_key: "${AZURE_OPENAI_API_KEY}"
-  endpoint: "https://llmproxyhub5196723659.cognitiveservices.azure.com/"
+  endpoint: "${AZURE_OPENAI_ENDPOINT}"
   api_version: "2024-08-01-preview"
   whisper_deployment: "whisper"
   gpt_deployment: "gpt-4.1-mini"

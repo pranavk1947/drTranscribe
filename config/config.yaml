@@ -56,7 +56,7 @@ security:
 
 # Database Configuration
 database:
-  url: "postgresql://localhost:5432/drtranscribe"
+  url: "${DATABASE_URL:-postgresql://localhost:5432/drtranscribe}"
   echo: false
   pool_size: 10
   max_overflow: 20
@@ -126,7 +126,7 @@ monitoring:
   metrics_port: 9090
   health_check_interval_seconds: 30
   alert_on_processing_failures: true
-  alert_email: "admin@clinic.com"
+  alert_email: "${ALERT_EMAIL:-admin@example.com}"
 
 # Development and Testing
 development:
