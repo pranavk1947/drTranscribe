@@ -100,6 +100,63 @@ docker-compose up -d
 curl http://localhost:8000/health
 ```
 
+## Usage
+
+### Web Frontend (Microphone)
+
+1. Start the server (`python -m src.main`) and open `http://localhost:8000`
+2. Enter patient details — name, age, and gender
+3. Click **Start Recording** and grant microphone permission when prompted
+4. Speak naturally — the system captures audio in 5-second chunks
+5. Watch the five extraction cards update in real-time as the consultation progresses:
+   - **Chief Complaint** — why the patient is visiting
+   - **Diagnosis** — conditions identified during the consultation
+   - **Medicine** — medications prescribed with dosage
+   - **Advice** — lifestyle and care instructions
+   - **Next Steps** — follow-ups, tests, referrals
+6. Click **Stop Recording** to end the session
+
+### Chrome Extension (Google Meet / Zoom)
+
+1. Join a Google Meet or Zoom call in Chrome
+2. A floating **drT** badge appears in the bottom-right corner of the meeting page
+3. Click the badge to open the drTranscribe panel
+4. Enter patient details and click **Start Session**
+5. The extension captures tab audio (both doctor and patient sides) and streams it to the backend
+6. Extraction cards update live inside the overlay panel
+7. Use **Pause/Resume** to temporarily stop capture (e.g., during off-topic discussion)
+8. When done, click **Stop Session**
+9. Click **Export to EMR** to generate a PDF of the extracted clinical data
+
+### Switching Providers
+
+No code changes needed. Edit `config/settings.yaml` and restart the server:
+
+```yaml
+# Use OpenAI instead of Groq for transcription
+transcription:
+  provider: "openai"
+  model: "whisper-1"
+
+# Use Claude instead of Gemini for extraction
+extraction:
+  provider: "claude"
+  model: "claude-sonnet-4-20250514"
+```
+
+### Running Without API Keys
+
+Set both providers to `mock` for development and testing:
+
+```yaml
+transcription:
+  provider: "mock"
+extraction:
+  provider: "mock"
+```
+
+The mock providers return simulated transcription and extraction data so you can test the full pipeline without any API keys.
+
 ## Configuration
 
 Edit `config/settings.yaml` to switch providers:
