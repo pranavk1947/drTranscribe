@@ -116,17 +116,26 @@ curl http://localhost:8000/health
    - **Next Steps** — follow-ups, tests, referrals
 6. Click **Stop Recording** to end the session
 
-### Chrome Extension (Google Meet / Zoom)
+### Chrome Extension (works on any tab)
 
-1. Join a Google Meet or Zoom call in Chrome
-2. A floating **drT** badge appears in the bottom-right corner of the meeting page
-3. Click the badge to open the drTranscribe panel
-4. Enter patient details and click **Start Session**
-5. The extension captures tab audio (both doctor and patient sides) and streams it to the backend
-6. Extraction cards update live inside the overlay panel
-7. Use **Pause/Resume** to temporarily stop capture (e.g., during off-topic discussion)
-8. When done, click **Stop Session**
-9. Click **Export to EMR** to generate a PDF of the extracted clinical data
+The extension popup (toolbar icon) is the main control surface and works on any normal web page — not just Meet/Zoom.
+
+**Doctor registration (optional, recommended):** on first open the popup shows **Register Now**. Fill in your name, mobile, email, and medical registration number — consults are then linked to your `doctor_id`. If your local data is ever wiped, use *"Already registered? Recover by email"*. You can start sessions without registering.
+
+**Two consult modes** (selectable in the popup; the last choice is remembered):
+
+- **Ambient (in-person):** records the room through your microphone only — for face-to-face consults. Audio is sent with `source: "ambient"`.
+- **Dual (teleconsult):** records your microphone (`source: "mic"`) *and* the current tab's audio (`source: "tab"`) — for Meet/Zoom/any web-based call. The tab keeps playing audibly.
+
+**Running a session:**
+
+1. Click the extension icon, pick a mode, press **Start** (badge shows `REC`)
+2. On Meet/Zoom the floating **drT** panel appears automatically; on other pages the panel is injected where possible — otherwise the popup itself shows the live extraction cards
+3. Use **Pause/Resume** (badge shows `II` while paused); if the captured tab closes or the mic disconnects, the session auto-pauses instead of silently losing audio
+4. Press **Stop** when done — the extension waits for the server's final summary before closing
+5. On Meet/Zoom, use the panel's **Export** options (EMR/PDF/clipboard) after the session
+
+The first Start may open a one-time microphone permission page — click **Allow** and start again.
 
 ### Switching Providers
 
@@ -221,10 +230,11 @@ drTranscribe/
 │   └── style.css
 ├── chromeExtension/              # Chrome Extension (Manifest V3)
 │   ├── manifest.json
-│   ├── background.js             # Service worker (WebSocket + tab capture)
-│   ├── content.js                # Injected overlay for Meet/Zoom
-│   ├── offscreen.js              # Audio capture via offscreen document
-│   ├── popup.html/js/css         # Extension popup (settings)
+│   ├── background.js             # Service worker (WebSocket, session + modes, tab capture)
+│   ├── content.js                # Panel overlay (static on Meet/Zoom, injected elsewhere)
+│   ├── offscreen.js              # Mic + tab audio capture via offscreen document
+│   ├── popup.html/js/css         # Popup: registration, mode selector, session controls
+│   ├── permissions.html/js       # One-time microphone permission helper page
 │   ├── export.js                 # PDF export for EMR
 │   └── icons/
 ├── config/
