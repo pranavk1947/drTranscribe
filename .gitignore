@@ -53,3 +53,8 @@ htmlcov/
 
 # Session data (audio recordings, temp chunks)
 data/
+
+# Cowork session metadata
+.claude/
+# mock backend local state
+tools/mock-doctors.json
