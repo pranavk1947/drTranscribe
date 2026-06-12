@@ -1,9 +1,13 @@
 /**
- * Content Script - Multi-platform overlay for drTranscribe
+ * Content Script - Panel UI overlay for drTranscribe (pure UI)
  *
- * Supports Google Meet and Zoom Web Client.
- * Injects a non-intrusive floating badge on meeting pages.
- * Badge click opens the full panel (on-demand, not auto-inject).
+ * Statically injected on Google Meet / Zoom Web Client; programmatically
+ * injected (chrome.scripting) on any other http(s) tab when a session
+ * starts from the popup.
+ *
+ * All audio capture lives in the offscreen document — this script only
+ * renders the panel, relays control clicks to the background, and shows
+ * extraction updates.
  *
  * Session state machine: pre -> recording -> post
  * Post-session: cards become editable textareas + export bar.
@@ -11,8 +15,9 @@
 (function () {
     'use strict';
 
-    // Prevent double-injection (keyed on badge, not panel)
-    if (document.getElementById('drt-badge')) return;
+    // Prevent double-injection (static + programmatic can overlap)
+    if (window.__drtContentLoaded) return;
+    window.__drtContentLoaded = true;
 
     // ─── Platform Detection ────────────────────────────────────
 
@@ -28,9 +33,13 @@
         return false;
     }
 
-    // Check current URL
-    if (!isMeetingUrl(window.location.pathname, window.location.hostname)) {
-        // Watch for SPA navigation
+    const onMeetingPlatform = window.location.hostname.includes('meet.google.com') ||
+        window.location.hostname.includes('zoom.us');
+
+    if (isMeetingUrl(window.location.pathname, window.location.hostname)) {
+        injectBadge();
+    } else if (onMeetingPlatform) {
+        // Watch for SPA navigation into a meeting
         let lastPath = window.location.pathname;
         const observer = new MutationObserver(() => {
             if (window.location.pathname !== lastPath) {
@@ -41,10 +50,9 @@
             }
         });
         observer.observe(document.body, { childList: true, subtree: true });
-        return;
     }
-
-    injectBadge();
+    // On any other page (programmatic injection), the badge + panel appear
+    // when the background sends session-started.
 
     // ─── State ─────────────────────────────────────────────────
 
@@ -55,182 +63,8 @@
     let latestExtraction = {};
     let appointmentData = null;      // Store received appointment/patient data (via postMessage)
 
-    // ─── Mic Capture State ──────────────────────────────────────
-
-    let micStream = null;
-    let micAudioContext = null;
-    let micScriptProcessor = null;
-    let micBuffer = [];
-    let micChunkTimer = null;
-    let micTargetSampleRate = 16000;
-    let micChunkDuration = 7; // seconds (overridden by server config)
-
-    /**
-     * Check if audio samples contain speech-level energy.
-     * @param {Float32Array} samples - Audio samples in [-1.0, 1.0] range
-     * @param {number} threshold - RMS threshold (0.01 = conservative for speech)
-     * @returns {boolean} true if speech detected
-     */
-    function hasSpeechEnergy(samples, threshold = 0.01) {
-        let sumSq = 0;
-        for (let i = 0; i < samples.length; i++) {
-            sumSq += samples[i] * samples[i];
-        }
-        const rms = Math.sqrt(sumSq / samples.length);
-        return rms >= threshold;
-    }
-
-    /**
-     * Downsample audio from native rate to target rate using linear interpolation
-     */
-    function downsampleMic(samples, fromRate, toRate) {
-        if (fromRate === toRate) return samples;
-
-        const ratio = fromRate / toRate;
-        const newLength = Math.round(samples.length / ratio);
-        const result = new Float32Array(newLength);
-
-        for (let i = 0; i < newLength; i++) {
-            const srcIndex = i * ratio;
-            const floor = Math.floor(srcIndex);
-            const ceil = Math.min(floor + 1, samples.length - 1);
-            const frac = srcIndex - floor;
-            result[i] = samples[floor] * (1 - frac) + samples[ceil] * frac;
-        }
-
-        return result;
-    }
-
-    /**
-     * Flush accumulated mic buffer: downsample, WAV encode, send to background
-     */
-    function flushMicBuffer() {
-        if (micBuffer.length === 0 || !micAudioContext) return;
-
-        // Concatenate accumulated samples
-        let totalLength = 0;
-        for (const chunk of micBuffer) totalLength += chunk.length;
-        const allSamples = new Float32Array(totalLength);
-        let offset = 0;
-        for (const chunk of micBuffer) {
-            allSamples.set(chunk, offset);
-            offset += chunk.length;
-        }
-        micBuffer = [];
-
-        // Downsample from native rate to 16kHz
-        const nativeRate = micAudioContext.sampleRate;
-        const downsampled = downsampleMic(allSamples, nativeRate, micTargetSampleRate);
-
-        // Voice Activity Detection: skip silent/noise-only chunks
-        if (!hasSpeechEnergy(downsampled)) {
-            console.log('[drT Content] Silent mic chunk, skipping');
-            return;
-        }
-
-        // Encode to WAV
-        const wavBlob = WavEncoder.encode(downsampled, micTargetSampleRate, 1);
-
-        // Convert Blob to base64 and send to background
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64Data = reader.result.split(',')[1];
-            chrome.runtime.sendMessage({
-                type: 'audio-chunk',
-                audio_data: base64Data,
-                source: 'mic'
-            });
-            console.log(`[drT Content] Sent mic chunk: ${allSamples.length} native -> ${downsampled.length} @${micTargetSampleRate}Hz`);
-        };
-        reader.onerror = (err) => {
-            console.error('[drT Content] FileReader error:', err);
-        };
-        reader.readAsDataURL(wavBlob);
-    }
-
-    /**
-     * Start capturing microphone audio via getUserMedia
-     * Works because content script runs in the page context (meet.google.com)
-     * where mic permission is already granted for the video call.
-     */
-    async function startMicCapture() {
-        try {
-            micStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
-            });
-            console.log('[drT Content] Mic stream acquired');
-
-            // Create AudioContext at native sample rate (do NOT force 16kHz)
-            micAudioContext = new AudioContext();
-            const nativeRate = micAudioContext.sampleRate;
-            console.log(`[drT Content] Mic AudioContext at ${nativeRate}Hz, target: ${micTargetSampleRate}Hz`);
-
-            const source = micAudioContext.createMediaStreamSource(micStream);
-
-            // Anti-alias filter: remove frequencies above target Nyquist (8kHz)
-            // before downsampling from 48kHz to 16kHz. Prevents aliasing artifacts.
-            const antiAliasFilter = micAudioContext.createBiquadFilter();
-            antiAliasFilter.type = 'lowpass';
-            antiAliasFilter.frequency.value = 7500;
-            antiAliasFilter.Q.value = 0.707; // Butterworth — flat passband
-
-            // ScriptProcessorNode to accumulate raw samples
-            micScriptProcessor = micAudioContext.createScriptProcessor(4096, 1, 1);
-            micScriptProcessor.onaudioprocess = (event) => {
-                const inputData = event.inputBuffer.getChannelData(0);
-                micBuffer.push(new Float32Array(inputData));
-            };
-
-            // Connect: source -> antiAliasFilter -> micScriptProcessor
-            source.connect(antiAliasFilter);
-            antiAliasFilter.connect(micScriptProcessor);
-            // ScriptProcessor must connect to destination to keep firing
-            micScriptProcessor.connect(micAudioContext.destination);
-
-            // Flush buffer every chunkDuration seconds
-            micChunkTimer = setInterval(flushMicBuffer, micChunkDuration * 1000);
-
-            console.log('[drT Content] Mic capture started');
-        } catch (err) {
-            console.warn('[drT Content] Mic capture failed:', err.message);
-            // Non-fatal: tab audio still works via offscreen
-        }
-    }
-
-    /**
-     * Stop mic capture and clean up all resources
-     */
-    function stopMicCapture() {
-        if (micChunkTimer) {
-            clearInterval(micChunkTimer);
-            micChunkTimer = null;
-        }
-
-        // Flush any remaining samples
-        flushMicBuffer();
-
-        if (micScriptProcessor) {
-            micScriptProcessor.disconnect();
-            micScriptProcessor = null;
-        }
-
-        if (micStream) {
-            micStream.getTracks().forEach(track => track.stop());
-            micStream = null;
-        }
-
-        if (micAudioContext) {
-            micAudioContext.close().catch(() => {});
-            micAudioContext = null;
-        }
-
-        micBuffer = [];
-        console.log('[drT Content] Mic capture stopped');
-    }
+    // NOTE: Mic capture was moved to the offscreen document (offscreen.js).
+    // This script is pure UI — it never touches getUserMedia.
 
     // ─── Badge ─────────────────────────────────────────────────
 
@@ -532,18 +366,25 @@
         // ─── Pause / Resume ────────────────────────────────
         pauseBtn.addEventListener('click', () => {
             if (isPaused) {
-                // Resume: tell backend to unpause extraction, restart mic + tab audio
-                isPaused = false;
-                pauseBtn.textContent = 'Pause';
+                // Resume: background reconnects / re-captures as needed
                 setStatus('Resuming...', 'connecting');
-                chrome.runtime.sendMessage({ type: 'resume-session' });
-                startMicCapture();
+                chrome.runtime.sendMessage({ type: 'resume-session' }, (response) => {
+                    if (chrome.runtime.lastError || !response || !response.ok) {
+                        const msg = (response && response.error) ||
+                            (chrome.runtime.lastError && chrome.runtime.lastError.message) ||
+                            'Could not resume the session. Try again or stop the session.';
+                        setStatus('Paused', '');
+                        alert(msg);
+                        return;
+                    }
+                    isPaused = false;
+                    pauseBtn.textContent = 'Pause';
+                });
             } else {
-                // Pause: tell backend to pause extraction, stop mic + tab audio
+                // Pause: background pauses extraction + all audio capture
                 isPaused = true;
                 pauseBtn.textContent = 'Resume';
                 setStatus('Pausing...', 'connecting');
-                stopMicCapture();
                 chrome.runtime.sendMessage({ type: 'pause-session' });
             }
         });
@@ -555,9 +396,11 @@
     }
 
     function doStopSession() {
-        stopMicCapture();
-        chrome.runtime.sendMessage({ type: 'stop-session' }, () => {
+        chrome.runtime.sendMessage({ type: 'stop-session' }, (response) => {
             // session-ended message will update UI
+            if (response && response.warning) {
+                showToast(response.warning);
+            }
         });
     }
 
@@ -733,9 +576,9 @@
             });
 
             document.getElementById('drt-export-pdf').addEventListener('click', async () => {
-                const settings = await chrome.storage.local.get(['doctorName', 'clinicName']);
+                const settings = await chrome.storage.local.get(['doctorName', 'clinicName', 'doctor']);
                 window.DrTExport.exportPDF(currentPatient, {
-                    doctorName: settings.doctorName || '',
+                    doctorName: (settings.doctor && settings.doctor.name) || settings.doctorName || '',
                     clinicName: settings.clinicName || ''
                 });
             });
@@ -853,21 +696,18 @@
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         switch (message.type) {
             case 'session-started':
+                // Session may have been started from the popup on a page where
+                // the badge/panel don't exist yet (programmatic injection).
+                if (!document.getElementById('drt-badge')) injectBadge();
+                if (!document.getElementById('drt-panel')) injectPanel();
                 sessionPhase = 'recording';
                 isPaused = false;
                 setSessionActive(true);
                 setStatus('Recording', 'recording');
                 resetResults();
-                // Apply server audio config if provided
-                if (message.audioConfig) {
-                    micTargetSampleRate = message.audioConfig.sample_rate || 16000;
-                    micChunkDuration = message.audioConfig.chunk_duration_seconds || 7;
-                }
-                startMicCapture();
                 break;
 
             case 'session-ended':
-                stopMicCapture();
                 setSessionActive(false);
                 if (sessionPhase === 'recording') {
                     transitionToPostSession();
@@ -878,11 +718,21 @@
                 break;
 
             case 'session_paused':
+                isPaused = true;
+                {
+                    const pb = document.getElementById('drt-pause-btn');
+                    if (pb) pb.textContent = 'Resume';
+                }
                 setStatus('Paused', '');
                 console.log('[drT] Session paused (server confirmed)');
                 break;
 
             case 'session_resumed':
+                isPaused = false;
+                {
+                    const pb = document.getElementById('drt-pause-btn');
+                    if (pb) pb.textContent = 'Pause';
+                }
                 setStatus('Recording', 'recording');
                 // Update extraction from server state if provided
                 if (message.extraction) {

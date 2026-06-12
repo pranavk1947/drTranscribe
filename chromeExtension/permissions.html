@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>drTranscribe — Microphone Access</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      max-width: 420px;
+      padding: 32px;
+      background: #181825;
+      border: 1px solid #313244;
+      border-radius: 12px;
+      text-align: center;
+    }
+    h1 { font-size: 18px; margin-bottom: 12px; color: #89b4fa; }
+    p { font-size: 13px; line-height: 1.6; color: #a6adc8; margin-bottom: 20px; }
+    .btn {
+      padding: 10px 24px;
+      background: #89b4fa;
+      color: #1e1e2e;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { background: #74a8fc; }
+    .result { margin-top: 18px; font-size: 13px; display: none; }
+    .result.ok { display: block; color: #a6e3a1; }
+    .result.fail { display: block; color: #f38ba8; text-align: left; }
+    .result.fail ol { margin: 10px 0 0 18px; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Microphone access needed</h1>
+    <p>
+      drTranscribe records the consultation through your microphone.
+      Click the button below and choose <strong>Allow</strong> when Chrome asks
+      for microphone permission. You only need to do this once.
+    </p>
+    <button class="btn" id="grant-btn">Allow microphone access</button>
+    <div class="result ok" id="result-ok">
+      Microphone access granted. You can close this tab and press
+      <strong>Start</strong> in the drTranscribe popup again.
+    </div>
+    <div class="result fail" id="result-fail">
+      Permission was blocked. To fix it:
+      <ol>
+        <li>Click the lock / tune icon in the address bar of this tab</li>
+        <li>Set <strong>Microphone</strong> to <strong>Allow</strong></li>
+        <li>Reload this page and click the button again</li>
+      </ol>
+    </div>
+  </div>
+  <script src="permissions.js"></script>
+</body>
+</html>
