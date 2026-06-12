@@ -5,7 +5,7 @@
 }
 
 body {
-    width: 300px;
+    width: 340px;
     font-family: 'Segoe UI', Roboto, sans-serif;
     font-size: 13px;
     background: #1e1e2e;
@@ -13,10 +13,10 @@ body {
 }
 
 .popup {
-    padding: 16px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
 }
 
 /* ─── Header ─────────────────────────────────────────────── */
@@ -25,7 +25,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding-bottom: 12px;
+    padding-bottom: 10px;
     border-bottom: 1px solid #313244;
 }
 
@@ -40,6 +40,32 @@ body {
     font-size: 14px;
     font-weight: 500;
     color: #a6adc8;
+}
+
+.popup-doctor {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: #a6e3a1;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ─── Error banner ───────────────────────────────────────── */
+
+.popup-error {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    background: rgba(243, 139, 168, 0.12);
+    border: 1px solid #f38ba8;
+    border-radius: 8px;
+    color: #f38ba8;
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 /* ─── Sections ───────────────────────────────────────────── */
@@ -58,6 +84,16 @@ body {
     color: #6c7086;
 }
 
+.popup-hint {
+    font-size: 11px;
+    color: #6c7086;
+    line-height: 1.5;
+}
+
+.popup-warn {
+    color: #f9e2af;
+}
+
 .popup-input-row {
     display: flex;
     gap: 6px;
@@ -65,13 +101,13 @@ body {
 
 .popup-input {
     flex: 1;
+    min-width: 0;
     padding: 7px 10px;
     background: #313244;
     border: 1px solid #45475a;
     border-radius: 6px;
     color: #cdd6f4;
     font-size: 12px;
-    font-family: monospace;
     outline: none;
     transition: border-color 0.15s;
 }
@@ -80,13 +116,33 @@ body {
     border-color: #89b4fa;
 }
 
-.popup-input-full {
-    width: 100%;
-    font-family: inherit;
+.popup-input-invalid {
+    border-color: #f38ba8;
 }
 
+.popup-input-full {
+    width: 100%;
+}
+
+#server-url {
+    font-family: monospace;
+}
+
+.popup-field-error {
+    font-size: 11px;
+    color: #f38ba8;
+    min-height: 0;
+    line-height: 1.4;
+}
+
+.popup-field-error:empty {
+    display: none;
+}
+
+/* ─── Buttons ────────────────────────────────────────────── */
+
 .popup-btn {
-    padding: 7px 14px;
+    padding: 8px 14px;
     background: #89b4fa;
     color: #1e1e2e;
     border: none;
@@ -94,12 +150,196 @@ body {
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, opacity 0.15s;
     white-space: nowrap;
 }
 
 .popup-btn:hover {
     background: #74a8fc;
+}
+
+.popup-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.popup-btn-small {
+    padding: 6px 10px;
+    font-size: 11px;
+    align-self: flex-start;
+}
+
+.popup-btn-ghost {
+    background: #313244;
+    color: #cdd6f4;
+}
+
+.popup-btn-ghost:hover {
+    background: #45475a;
+}
+
+.popup-btn-register {
+    background: #a6e3a1;
+    width: 100%;
+}
+
+.popup-btn-register:hover {
+    background: #94d98e;
+}
+
+.popup-link {
+    font-size: 11px;
+    color: #89b4fa;
+    text-decoration: none;
+}
+
+.popup-link:hover {
+    text-decoration: underline;
+}
+
+/* ─── Mode toggle ────────────────────────────────────────── */
+
+.popup-mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.popup-mode-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 6px;
+    background: #313244;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    color: #a6adc8;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.popup-mode-btn span {
+    font-size: 10px;
+    font-weight: 400;
+    color: #6c7086;
+}
+
+.popup-mode-btn.active {
+    background: rgba(137, 180, 250, 0.15);
+    border-color: #89b4fa;
+    color: #89b4fa;
+}
+
+.popup-mode-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ─── Session controls ───────────────────────────────────── */
+
+.popup-controls {
+    display: flex;
+    gap: 6px;
+}
+
+.popup-controls .popup-btn {
+    flex: 1;
+}
+
+.popup-btn-start {
+    background: #a6e3a1;
+}
+
+.popup-btn-start:hover {
+    background: #94d98e;
+}
+
+.popup-btn-pause,
+.popup-btn-resume {
+    background: #f9e2af;
+}
+
+.popup-btn-pause:hover,
+.popup-btn-resume:hover {
+    background: #f5d88a;
+}
+
+.popup-btn-stop {
+    background: #f38ba8;
+}
+
+.popup-btn-stop:hover {
+    background: #f06c92;
+}
+
+.popup-session-line {
+    font-size: 11px;
+    color: #6c7086;
+    line-height: 1.5;
+}
+
+.popup-session-line.recording {
+    color: #f38ba8;
+}
+
+.popup-session-line.paused {
+    color: #f9e2af;
+}
+
+/* ─── Extraction cards ───────────────────────────────────── */
+
+.popup-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.popup-card {
+    padding: 8px 10px;
+    background: #181825;
+    border: 1px solid #313244;
+    border-radius: 6px;
+}
+
+.popup-card-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #89b4fa;
+    margin-bottom: 3px;
+}
+
+.popup-card-body {
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+}
+
+.popup-card-empty {
+    color: #585b70;
+}
+
+/* ─── Settings ───────────────────────────────────────────── */
+
+.popup-settings {
+    border-top: 1px solid #313244;
+    padding-top: 8px;
+}
+
+.popup-settings summary {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6c7086;
+    cursor: pointer;
+    margin-bottom: 8px;
 }
 
 /* ─── Status ─────────────────────────────────────────────── */
@@ -137,12 +377,4 @@ body {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
-}
-
-/* ─── Footer ─────────────────────────────────────────────── */
-
-.popup-footer {
-    font-size: 11px;
-    color: #585b70;
-    text-align: center;
 }
