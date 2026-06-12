@@ -90,6 +90,20 @@ For capturing audio from Google Meet or Zoom calls:
 5. Click **Load unpacked** and select the unzipped folder
 6. Click the extension icon to configure your server URL (default: `http://localhost:8080`)
 
+> **Which backend does the extension talk to?** The extension implements the
+> extended WebSocket/REST contract of the **loop-scribe backend** (doctor
+> registration via `/api/doctors*`, `mode`/`doctor_id` on `start_session`,
+> `pause_session`/`session_resume`, `source: "ambient"`), and its default
+> server URL is `http://localhost:8080` — the loop-scribe port.
+>
+> The in-repo server (`python -m src.main`) runs on **port 8000** and does
+> **not** implement this contract (no `session_started` ack, no doctor
+> registration routes, no pause/resume) — the extension will fail its start
+> handshake against it. Point the extension at a running loop-scribe backend
+> instead; only the web frontend (`http://localhost:8000`) is served by the
+> in-repo server. If you change the port in the popup's Settings, note that
+> `manifest.json` `host_permissions` also pins `http://localhost:8080/*`.
+
 ### Docker
 
 ```bash

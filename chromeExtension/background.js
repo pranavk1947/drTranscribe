@@ -21,7 +21,7 @@ const FETCH_TIMEOUT_MS = 8000;
 const STOP_ACK_TIMEOUT_MS = 10000;
 const START_ACK_TIMEOUT_MS = 10000;
 const MAX_RECONNECT_ATTEMPTS = 5;
-const MAX_BUFFERED_CHUNKS = 24; // ~2 min of audio at 5s chunks, two sources
+const MAX_BUFFERED_CHUNKS = 24; // 5s chunks: ~2 min in ambient mode, ~1 min in dual (two sources share the cap)
 
 let websocket = null;
 let isStarting = false;        // Guard against double-click Start
@@ -74,9 +74,19 @@ async function restoreSessionState() {
             session = { ...session, ...savedSession };
             latestExtraction = savedExtraction || {};
             console.log('[BG] Restored session state after SW restart:', session.appointmentId, session.mode);
-            // The socket is gone after SW termination — reconnect lazily;
-            // the next audio chunk (or popup interaction) triggers it.
-            scheduleReconnect(0);
+            if (session.paused) {
+                // P1-2: the session was PAUSED when the SW died. Do not
+                // reconnect here — connectWebSocket({resume:true}) sends
+                // session_resume, which would unpause the server while the
+                // client/offscreen stay paused (server records silence).
+                // resumeSession() reconnects lazily when the doctor presses
+                // Resume.
+                console.log('[BG] Restored session is paused — deferring reconnect until Resume');
+            } else {
+                // The socket is gone after SW termination — reconnect now;
+                // buffered chunks are flushed once session_resume is acked.
+                scheduleReconnect(0);
+            }
         }
     } catch (err) {
         console.warn('[BG] Failed to restore session state:', err.message);
@@ -401,6 +411,17 @@ function handleServerMessage(message) {
             broadcastStatus();
             break;
 
+        case 'session_stopped':
+            // Unsolicited server-side stop (timeout / cleanup). The solicited
+            // ack during stopSession() is intercepted by its temporary
+            // ws.onmessage handler and never reaches here.
+            if (session.active && !isStopping) {
+                console.warn('[BG] Server stopped the session unsolicited — tearing down');
+                broadcastError('The server ended the session. Review the extraction before relying on it.', 'SERVER_STOPPED');
+                stopSession().catch(() => {});
+            }
+            break;
+
         case 'error': {
             const code = message.code || '';
             const text = message.message || '';
@@ -632,7 +653,7 @@ async function tryInjectPanel(tabId) {
 
 // ─── Session Lifecycle ──────────────────────────────────────────────
 
-async function startSession({ mode, tabId, appointmentId, freshAppointmentId } = {}) {
+async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fromPanel = false } = {}) {
     await initPromise;
     if (isStarting) {
         throw new Error('A session is already starting — give it a second.');
@@ -689,8 +710,13 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId } =
             try {
                 streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: targetTab.id });
             } catch (err) {
-                const e = new Error("Couldn't capture this tab's audio. Switch to Ambient mode, or open the consult page in a regular tab and try again.");
-                e.code = 'TAB_NOT_CAPTURABLE';
+                // P1-5: a start initiated from the in-page panel does not count
+                // as "invoking the extension", so tabCapture is not granted.
+                // Tell the doctor the real fix instead of "switch to Ambient".
+                const e = new Error(fromPanel
+                    ? 'Chrome only allows tab-audio capture when the session is started from the extension itself. Click the drTranscribe toolbar icon and press Start there (or switch to Ambient mode in the popup).'
+                    : "Couldn't capture this tab's audio. Switch to Ambient mode, or open the consult page in a regular tab and try again.");
+                e.code = fromPanel ? 'TAB_CAPTURE_NEEDS_POPUP' : 'TAB_NOT_CAPTURABLE';
                 throw e;
             }
         }
@@ -842,7 +868,19 @@ async function stopSession() {
 }
 
 function pauseSession(reason) {
-    if (!session.active || session.paused) return { ok: true };
+    if (!session.active) return { ok: true };
+    if (session.paused) {
+        // Already paused (e.g. capture lost while paused, P2-3): still record
+        // the reason, flag attention, and persist so lostCapture survives a
+        // SW restart and Resume re-acquires the lost source.
+        if (reason) {
+            session.pausedReason = reason;
+            setBadge('attention');
+        }
+        persistSession();
+        broadcastStatus();
+        return { ok: true };
+    }
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send(JSON.stringify({ type: 'pause_session', appointment_id: session.appointmentId }));
     }
@@ -865,11 +903,15 @@ async function resumeSession() {
     if (!session.active || !session.paused) return { ok: true };
 
     // 1. Make sure the socket is alive
+    // P1-3: connectWebSocket({resume:true}) already sends session_resume on
+    // the fresh socket — remember that so step 3 doesn't send it twice.
+    let resumedViaReconnect = false;
     if (!websocket || websocket.readyState !== WebSocket.OPEN) {
         try {
             reconnectAttempts = 0;
             if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
             await connectWebSocket({ resume: true });
+            resumedViaReconnect = true;
             flushPendingAudio();
         } catch (err) {
             throw new Error(`Still can't reach the server at ${session.serverUrl} — check that it's running, then press Resume again.`);
@@ -909,8 +951,9 @@ async function resumeSession() {
         session.lostCapture.mic = false;
     }
 
-    // 3. Tell server + offscreen to resume
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
+    // 3. Tell server + offscreen to resume (skip the server message if the
+    //    reconnect in step 1 already sent session_resume — P1-3)
+    if (!resumedViaReconnect && websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send(JSON.stringify({ type: 'session_resume', appointment_id: session.appointmentId }));
     }
     await sendToOffscreen({ type: 'offscreen-resume-capture' }).catch(() => {});
@@ -951,7 +994,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 mode: message.mode,
                 tabId: tabId,
                 appointmentId: message.appointmentId,
-                freshAppointmentId: message.freshAppointmentId
+                freshAppointmentId: message.freshAppointmentId,
+                fromPanel: !!sender.tab // In-page panel start (no toolbar invocation) — see P1-5
             })
                 .then(result => sendResponse(result))
                 .catch(err => sendResponse({ ok: false, error: err.message, code: err.code }));
@@ -976,7 +1020,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // ── Audio from offscreen ──
         case 'audio-chunk':
-            sendAudioChunk(message.audio_data, message.source);
+            // P1-1: after a SW restart this very chunk is what wakes the
+            // worker — wait for restoreSessionState() so session.active is
+            // accurate, otherwise the chunk is silently dropped.
+            initPromise.then(() => sendAudioChunk(message.audio_data, message.source));
             return false;
 
         case 'capture-started':

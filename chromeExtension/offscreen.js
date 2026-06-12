@@ -22,8 +22,13 @@
  * Messages to background:
  * - audio-chunk { audio_data, source }
  * - capture-started
- * - capture-error { which: 'mic'|'tab', name, error }
+ * - capture-error { which: 'mic'|'tab', error }   (chunk encoding failed mid-session)
  * - capture-ended { which: 'mic'|'tab' }   (track ended mid-session)
+ *
+ * Stop ordering (P1-4): offscreen-stop-capture flushes the worklets
+ * (request/response via 'flush' → 'flush-done'), waits for in-flight chunk
+ * encodes to reach the background, and only then tears down + responds —
+ * so the final partial chunk is sent before background emits stop_session.
  */
 
 let currentMode = null;       // 'ambient' | 'dual'
@@ -78,6 +83,11 @@ function downsample(samples, fromRate, toRate) {
     return result;
 }
 
+// Promises for chunk encodes still in flight (FileReader is async) — awaited
+// during stopCapture so the final partial chunk reaches the background
+// before the stop ack (P1-4).
+let inFlightChunkSends = new Set();
+
 /**
  * Handle an audio chunk from a worklet: downsample, VAD, WAV-encode,
  * base64, send to background with the given source label.
@@ -92,21 +102,33 @@ function handleAudioChunk(samples, nativeRate, source) {
 
         const wavBlob = WavEncoder.encode(downsampled, targetSampleRate, 1);
 
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64Data = reader.result.split(',')[1];
-            chrome.runtime.sendMessage({
-                type: 'audio-chunk',
-                audio_data: base64Data,
-                source: source
-            }).catch(() => {});
-        };
-        reader.onerror = (err) => {
-            console.error('[Offscreen] FileReader error:', err);
-        };
-        reader.readAsDataURL(wavBlob);
+        const sendPromise = new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64Data = reader.result.split(',')[1];
+                Promise.resolve(chrome.runtime.sendMessage({
+                    type: 'audio-chunk',
+                    audio_data: base64Data,
+                    source: source
+                })).catch(() => {}).then(resolve);
+            };
+            reader.onerror = (err) => {
+                console.error('[Offscreen] FileReader error:', err);
+                resolve();
+            };
+            reader.readAsDataURL(wavBlob);
+        });
+        inFlightChunkSends.add(sendPromise);
+        sendPromise.then(() => inFlightChunkSends.delete(sendPromise));
     } catch (err) {
         console.error('[Offscreen] Error encoding audio chunk:', err);
+        // Non-track pipeline failure — let the background surface it instead
+        // of losing audio silently (P2-1).
+        chrome.runtime.sendMessage({
+            type: 'capture-error',
+            which: source === 'tab' ? 'tab' : 'mic',
+            error: err.message
+        }).catch(() => {});
     }
 }
 
@@ -257,7 +279,7 @@ async function startCapture(mode, streamId, audioConfig) {
     // 1. Mic (required in both modes)
     const micResult = await startMicCapture();
     if (!micResult.ok) {
-        stopCapture();
+        await stopCapture();
         return micResult;
     }
 
@@ -265,7 +287,7 @@ async function startCapture(mode, streamId, audioConfig) {
     if (mode === 'dual' && streamId) {
         const tabResult = await startTabCapture(streamId);
         if (!tabResult.ok) {
-            stopCapture();
+            await stopCapture();
             return tabResult;
         }
     }
@@ -277,9 +299,36 @@ async function startCapture(mode, streamId, audioConfig) {
     return { ok: true };
 }
 
+/**
+ * Ask a worklet to flush its partial buffer and wait for the 'flush-done'
+ * reply (capped) so the chunk is handed to handleAudioChunk before the
+ * pipeline is torn down (P1-4).
+ */
+function flushWorklet(worklet, timeoutMs = 250) {
+    return new Promise((resolve) => {
+        if (!worklet) return resolve();
+        const prevHandler = worklet.port.onmessage;
+        const timer = setTimeout(() => {
+            worklet.port.onmessage = prevHandler;
+            resolve();
+        }, timeoutMs);
+        worklet.port.onmessage = (event) => {
+            if (event.data.type === 'flush-done') {
+                clearTimeout(timer);
+                worklet.port.onmessage = prevHandler;
+                resolve();
+            } else if (prevHandler) {
+                prevHandler(event); // e.g. the flushed audio-chunk itself
+            }
+        };
+        worklet.port.postMessage({ type: 'flush' });
+    });
+}
+
 function stopMicPipeline() {
     if (micWorklet) {
-        micWorklet.port.postMessage({ type: 'flush' });
+        // Flushing is handled (awaited) in stopCapture; a fire-and-forget
+        // flush here would race teardown / emit a stray post-stop chunk.
         micWorklet.disconnect();
         micWorklet = null;
     }
@@ -296,7 +345,6 @@ function stopMicPipeline() {
 
 function stopTabPipeline() {
     if (tabWorklet) {
-        tabWorklet.port.postMessage({ type: 'flush' });
         tabWorklet.disconnect();
         tabWorklet = null;
     }
@@ -319,10 +367,24 @@ function stopTabPipeline() {
 
 /**
  * Stop all capture and clean up resources.
+ *
+ * P1-4: before tearing the pipelines down, flush the worklets' partial
+ * buffers and wait for any in-flight chunk encodes to be forwarded to the
+ * background — so the doctor's last utterance is sent before stop_session.
  */
-function stopCapture() {
+async function stopCapture() {
     console.log('[Offscreen] Stopping capture');
     isCapturing = false; // Set first so onended handlers don't fire notifications
+
+    // 1. Flush partial buffers (request/response, ~250ms cap per worklet)
+    await Promise.all([flushWorklet(micWorklet), flushWorklet(tabWorklet)]);
+
+    // 2. Wait for in-flight encodes to reach the background (capped)
+    await Promise.race([
+        Promise.all([...inFlightChunkSends]),
+        new Promise((r) => setTimeout(r, 500))
+    ]);
+
     stopMicPipeline();
     stopTabPipeline();
     isPaused = false;
@@ -343,9 +405,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true; // async response
 
         case 'offscreen-stop-capture':
-            stopCapture();
-            sendResponse({ ok: true });
-            return false;
+            // Async: flushes the final partial chunk to the background before
+            // acking, so background sends it ahead of stop_session (P1-4)
+            stopCapture()
+                .then(() => sendResponse({ ok: true }))
+                .catch(err => sendResponse({ ok: false, error: err.message }));
+            return true; // async response
 
         case 'offscreen-pause-capture':
             isPaused = true;
