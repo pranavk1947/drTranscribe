@@ -667,6 +667,23 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
     let wsConnected = false;
     let offscreenStarted = false;
     try {
+        // 0. Registration gate — every consult must be linked to a registered
+        //    doctor. This is the single enforcement point: the popup hides
+        //    Start while unregistered, and the in-page panel renders this
+        //    error actionably.
+        const doctor = await getStoredDoctor();
+        if (!doctor || !doctor.doctor_id) {
+            if (fromPanel) {
+                // Best-effort: surface the popup so the doctor lands on the
+                // registration form (Chrome may reject this without a fresh
+                // toolbar gesture — the error message covers that case).
+                try { await chrome.action.openPopup(); } catch {}
+            }
+            const err = new Error('Register first — click the Loop Scribe icon in the toolbar and tap Register Now.');
+            err.code = 'REGISTRATION_REQUIRED';
+            throw err;
+        }
+
         // 1. Resolve mode + target tab
         const stored = await chrome.storage.local.get('lastMode');
         session.mode = mode || stored.lastMode || 'dual';
@@ -689,9 +706,8 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
         }
         session.audioConfig = await fetchAudioConfig(session.serverUrl);
 
-        // 3. Doctor (optional — omit doctor_id if unregistered)
-        const doctor = await getStoredDoctor();
-        session.doctorId = doctor && doctor.doctor_id ? doctor.doctor_id : null;
+        // 3. Doctor — guaranteed present by the registration gate (step 0)
+        session.doctorId = doctor.doctor_id;
 
         // 4. Appointment id
         session.appointmentId = freshAppointmentId

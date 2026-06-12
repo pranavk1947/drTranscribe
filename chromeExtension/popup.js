@@ -6,9 +6,9 @@
  * from get-status; while open, it re-renders from status-update broadcasts.
  *
  * Surfaces:
- * - Doctor registration (optional, inline form, recover-by-email)
+ * - Doctor registration (required before Start; inline form, recover-by-email)
  * - Mode selector: Ambient (in-person) vs Dual (teleconsult)
- * - Start / Pause / Resume / Stop
+ * - Start / Pause / Resume / Stop (Start hidden until registered)
  * - Live extraction cards
  * - Server URL settings + health
  */
@@ -130,8 +130,12 @@ async function updateDualWarning() {
 
 function renderControls(status) {
     const { sessionActive, paused, isStarting } = status;
-    startBtn.style.display = sessionActive ? 'none' : '';
-    startBtn.disabled = !!isStarting;
+    // Registration is required before a session can start (the background
+    // enforces this with REGISTRATION_REQUIRED; here we hide Start and make
+    // registration the primary action).
+    const registered = !!(status.doctor && status.doctor.doctor_id);
+    startBtn.style.display = (sessionActive || !registered) ? 'none' : '';
+    startBtn.disabled = !!isStarting || !registered;
     startBtn.textContent = isStarting ? 'Starting…' : '▶ Start';
     pauseBtn.style.display = sessionActive && !paused ? '' : 'none';
     resumeBtn.style.display = sessionActive && paused ? '' : 'none';
@@ -145,6 +149,8 @@ function renderControls(status) {
     } else if (sessionActive) {
         sessionLine.classList.add('recording');
         sessionLine.textContent = `Recording (${status.mode}) — ${status.appointmentId || ''}`;
+    } else if (!registered) {
+        sessionLine.textContent = 'Register to start your first consult.';
     } else {
         sessionLine.textContent = 'No active session';
     }
@@ -286,11 +292,14 @@ async function submitRegistration() {
 
     if (result && result.ok) {
         closeRegisterForm();
+        // Re-render from background state so the session controls unlock
+        // immediately (no popup reopen needed).
+        await refreshStatus();
         renderDoctor(result.doctor);
         const name = (result.doctor.name || '').replace(/^dr\.?\s*/i, '');
         sessionLine.textContent = result.existing
-            ? `Welcome back, Dr. ${name}!`
-            : `Registered — welcome, Dr. ${name}!`;
+            ? `Welcome back, Dr. ${name}! You can start a consult now.`
+            : `Registered — welcome, Dr. ${name}! You can start a consult now.`;
         return;
     }
 
@@ -330,9 +339,11 @@ recoverBtn.addEventListener('click', async () => {
     recoverBtn.disabled = false;
     if (result && result.ok) {
         closeRegisterForm();
+        // Unlock session controls without reopening the popup
+        await refreshStatus();
         renderDoctor(result.doctor);
         const name = (result.doctor.name || '').replace(/^dr\.?\s*/i, '');
-        sessionLine.textContent = `Welcome back, Dr. ${name}!`;
+        sessionLine.textContent = `Welcome back, Dr. ${name}! You can start a consult now.`;
     } else {
         recoverError.textContent = (result && result.error) || 'Lookup failed. Try again.';
     }
@@ -373,7 +384,15 @@ async function doStart(freshAppointmentId) {
 
     const code = result && result.code;
     const message = (result && result.error) || 'Could not start the session. Try again.';
-    if (code === 'SESSION_ALREADY_ACTIVE') {
+    if (code === 'REGISTRATION_REQUIRED') {
+        // Shouldn't normally happen (Start is hidden while unregistered) —
+        // defensive path if state drifted while the popup was open.
+        refreshStatus();
+        showError(message, {
+            label: 'Register',
+            onClick: () => { clearError(); openRegisterForm(); }
+        });
+    } else if (code === 'SESSION_ALREADY_ACTIVE') {
         showError('A session for this appointment is already active on the server. Start with a fresh appointment ID?', {
             label: 'New ID + Retry',
             onClick: () => doStart(true)

@@ -31,8 +31,10 @@ Registered doctors persist in `tools/mock-doctors.json` — delete it to reset t
 
 ### A. First-time doctor, ambient (in-person) consult — on any tab
 1. Open any article page. Click the toolbar icon.
-2. Expect: **Register Now** prompt (no doctor yet). Register with valid details.
-   - Mock terminal shows `POST /api/doctors → 201`. Popup header shows *Dr. \<name\>*.
+2. Expect: **Register Now** prompt (no doctor yet) and **no Start button** — registration is
+   required before a session can start. Register with valid details.
+   - Mock terminal shows `POST /api/doctors → 201`. Popup header shows *Dr. \<name\>* and the
+     session controls unlock without reopening the popup.
 3. Select **Ambient**, press **Start**. First ever start: a permissions page opens for mic access —
    grant, then press Start again.
 4. Speak for ~20s. Expect: badge `REC`, extraction cards fill progressively (mock stages them
@@ -74,7 +76,7 @@ Registered doctors persist in `tools/mock-doctors.json` — delete it to reset t
 | 15 | Bad form input | Submit empty/invalid email/9-digit phone | Inline per-field errors (client-side); server 400 path: bypass client validation by editing popup.js temporarily |
 | 16 | Double-click Start | Mash Start | One session; button disabled while starting |
 | 17 | Popup closed mid-flow | Start, close popup immediately, reopen | Popup re-renders correct live state from `get-status` |
-| 18 | Unregistered doctor consults | Skip registration → Start | Works; nudge visible; terminal shows `start_session` **without** `doctor_id` |
+| 18 | Unregistered doctor consults | Skip registration → try to Start (popup hides Start while unregistered, so use the in-page panel's Start Session) | Start blocked with REGISTRATION_REQUIRED until registered |
 
 ---
 

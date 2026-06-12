@@ -1,5 +1,5 @@
 /**
- * Content Script - Panel UI overlay for drTranscribe (pure UI)
+ * Content Script - Loop Scribe in-page floating panel (pure UI)
  *
  * Statically injected on Google Meet / Zoom Web Client; programmatically
  * injected (chrome.scripting) on any other http(s) tab when a session
@@ -9,8 +9,17 @@
  * renders the panel, relays control clicks to the background, and shows
  * extraction updates.
  *
- * Session state machine: pre -> recording -> post
- * Post-session: cards become editable textareas + export bar.
+ * Panel state machine: ready -> recording <-> paused -> completed -> ready
+ * - ready:     primary "Start Session"; cards show "Waiting for session..."
+ * - recording: primary "Pause"; outlined "End Session"; empty cards "Listening..."
+ * - paused:    primary "Resume"; outlined "End Session"
+ * - completed: primary "Start New Session"; cards contenteditable (local
+ *              edits only); lime "Copy to EMR" + PDF link below the cards
+ *
+ * Minimize: the "—" button hides the window and shows a circular Loop ring
+ * badge (bottom-right). The same badge is the launcher on Meet/Zoom before
+ * the panel is first opened — the two never coexist with the window.
+ * Restoring toggles visibility only; the panel is never rebuilt.
  */
 (function () {
     'use strict';
@@ -56,43 +65,92 @@
 
     // ─── State ─────────────────────────────────────────────────
 
-    let sessionPhase = 'pre'; // 'pre' | 'recording' | 'post'
-    let isCollapsed = false;
-    let isPaused = false;
+    let panelState = 'ready';        // 'ready' | 'recording' | 'paused' | 'completed'
+    let isMinimized = false;         // Per-tab, in-memory minimized flag
     let currentPatient = { name: '', age: '', gender: '' };
     let latestExtraction = {};
-    let appointmentData = null;      // Store received appointment/patient data (via postMessage)
+    let appointmentData = null;      // Received appointment/patient data (via postMessage)
 
-    // NOTE: Mic capture was moved to the offscreen document (offscreen.js).
+    // NOTE: Mic capture lives in the offscreen document (offscreen.js).
     // This script is pure UI — it never touches getUserMedia.
 
-    // ─── Badge ─────────────────────────────────────────────────
+    const FIELDS = [
+        { key: 'chief_complaint', label: 'Chief Complaint', icon: '&#x1FA7A;', accent: 'chief' },
+        { key: 'diagnosis', label: 'Diagnosis', icon: '&#x1F4CB;', accent: 'diagnosis' },
+        { key: 'medicine', label: 'Medicine', icon: '&#x1F48A;', accent: 'medicine' },
+        { key: 'advice', label: 'Advice', icon: '&#x1F4AC;', accent: 'advice' },
+        { key: 'next_steps', label: 'Next Steps', icon: '&#x27A1;', accent: 'nextsteps' }
+    ];
+
+    const STATUS_META = {
+        ready: { label: 'Ready', dot: 'drt-dot-grey' },
+        recording: { label: 'Recording', dot: 'drt-dot-green drt-dot-pulse' },
+        paused: { label: 'Paused', dot: 'drt-dot-amber' },
+        completed: { label: 'Completed', dot: 'drt-dot-green' }
+    };
+
+    // ─── Minimize Badge ────────────────────────────────────────
 
     function injectBadge() {
+        if (document.getElementById('drt-badge')) return;
         const badge = document.createElement('div');
         badge.id = 'drt-badge';
-        badge.className = 'drt-badge drt-badge-detected';
+        badge.className = 'drt-badge';
+        badge.title = 'Loop Scribe — click to open';
+        // Loop ring mark in pure CSS (dark green disc + lime ring)
+        badge.innerHTML = '<span class="drt-badge-ring"></span><span class="drt-badge-dot" id="drt-badge-dot"></span>';
 
-        // Use drTranscribe logo image
-        const logoImg = document.createElement('img');
-        logoImg.src = chrome.runtime.getURL('icons/logo.png');
-        logoImg.alt = 'drTranscribe';
-        logoImg.className = 'drt-badge-logo';
-        badge.appendChild(logoImg);
-
-        badge.title = 'drTranscribe - Click to open';
         badge.addEventListener('click', async () => {
-            const panel = document.getElementById('drt-panel');
-            if (panel) {
-                // Panel already exists, just toggle visibility
-                panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+            if (document.getElementById('drt-panel')) {
+                restorePanel();
             } else {
-                // First time opening - request patient data from EMR
+                // First time opening — request patient data from EMR
                 await requestPatientDataFromEMR();
-                injectPanel();
+                restorePanel();
             }
         });
         document.body.appendChild(badge);
+        updateBadge();
+    }
+
+    /** Hide the window, show the badge (state stays intact). */
+    function minimizePanel() {
+        const panel = document.getElementById('drt-panel');
+        if (panel) panel.style.display = 'none';
+        isMinimized = true;
+        if (!document.getElementById('drt-badge')) injectBadge();
+        const badge = document.getElementById('drt-badge');
+        if (badge) badge.style.display = '';
+        updateBadge();
+    }
+
+    /** Show the window (creating it once if needed), hide the badge. */
+    function restorePanel() {
+        if (!document.getElementById('drt-panel')) injectPanel();
+        const panel = document.getElementById('drt-panel');
+        if (panel) panel.style.display = 'flex';
+        isMinimized = false;
+        const badge = document.getElementById('drt-badge');
+        if (badge) badge.style.display = 'none';
+    }
+
+    /** Status dot overlay on the badge mirrors the session state. */
+    function updateBadge() {
+        const dot = document.getElementById('drt-badge-dot');
+        if (!dot) return;
+        dot.className = 'drt-badge-dot';
+        if (panelState === 'recording') dot.classList.add('drt-badge-dot-recording');
+        else if (panelState === 'paused') dot.classList.add('drt-badge-dot-paused');
+        else if (panelState === 'completed') dot.classList.add('drt-badge-dot-completed');
+    }
+
+    /** Subtle pulse when new data arrives while minimized (no auto-expand). */
+    function pulseBadge() {
+        const badge = document.getElementById('drt-badge');
+        if (!badge || badge.style.display === 'none') return;
+        badge.classList.remove('drt-badge-blip');
+        void badge.offsetWidth; // restart the animation
+        badge.classList.add('drt-badge-blip');
     }
 
     // ─── Panel ─────────────────────────────────────────────────
@@ -103,164 +161,61 @@
         const panel = document.createElement('div');
         panel.id = 'drt-panel';
         panel.className = 'drt-panel';
+
+        const cardsHtml = FIELDS.map(f => `
+                    <div class="drt-card drt-card-${f.accent}">
+                        <div class="drt-card-header">
+                            <span class="drt-card-chip">${f.icon}</span>
+                            <span class="drt-card-title">${f.label}</span>
+                        </div>
+                        <div class="drt-card-body drt-empty" id="drt-field-${f.key}">Waiting for session to begin...</div>
+                    </div>`).join('');
+
         panel.innerHTML = `
             <div class="drt-header" id="drt-header">
-                <div class="drt-brand">
-                    <div class="drt-logo-icon">drT</div>
-                    <span class="drt-logo">drTranscribe</span>
-                    <span class="drt-status" id="drt-status">Ready</span>
-                </div>
-                <div class="drt-controls">
-                    <button class="drt-btn-icon" id="drt-collapse" title="Collapse">&#x2015;</button>
-                    <button class="drt-btn-icon" id="drt-close" title="Close">&#x2715;</button>
-                </div>
+                <img class="drt-wordmark" src="${chrome.runtime.getURL('icons/logo.png')}" alt="Loop" />
+                <span class="drt-statusline">
+                    <span class="drt-status-dot drt-dot-grey" id="drt-status-dot"></span>
+                    <span id="drt-status-label">Ready</span>
+                </span>
+                <button class="drt-btn-min" id="drt-minimize" title="Minimize">&#x2014;</button>
+            </div>
+
+            <div class="drt-error" id="drt-error" style="display: none;">
+                <span id="drt-error-text"></span>
             </div>
 
             <div class="drt-body" id="drt-body">
-                <!-- Compact patient display (shown when appointmentData exists) -->
-                <div id="drt-patient-display" class="drt-patient-display" style="display: none;">
-                    <div class="drt-patient-avatar" id="drt-patient-avatar">PK</div>
-                    <div class="drt-patient-details">
-                        <div class="drt-patient-name" id="drt-patient-name-display">Patient Name</div>
-                        <div class="drt-patient-meta">
-                            <span class="drt-patient-tag" id="drt-patient-age-tag"></span>
-                            <span class="drt-patient-tag" id="drt-patient-gender-tag"></span>
-                            <span class="drt-patient-tag" id="drt-patient-id-tag"></span>
-                        </div>
-                    </div>
+                <button class="drt-btn-primary" id="drt-primary-btn">&#x25B6; Start Session</button>
+                <div class="drt-hint" id="drt-hint" style="display: none;">You can make edits after the session ends</div>
+
+                <div class="drt-cards" id="drt-cards">${cardsHtml}
                 </div>
 
-                <!-- Full patient form (shown when no appointmentData) -->
-                <div id="drt-patient-form-section">
-                    <div class="drt-section-title">Patient Info</div>
-                    <div class="drt-form-row">
-                        <input type="text" id="drt-patient-name" class="drt-input" placeholder="Patient Name" />
-                    </div>
-                    <div class="drt-form-row drt-form-row-split">
-                        <input type="number" id="drt-patient-age" class="drt-input drt-input-small" placeholder="Age" min="0" max="150" />
-                        <select id="drt-patient-gender" class="drt-input">
-                            <option value="" disabled selected>Gender</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                </div>
+                <button class="drt-btn-end" id="drt-end-btn" style="display: none;">&#x25A0; End Session</button>
 
-                <!-- Session controls -->
-                <div class="drt-session-controls" id="drt-session-actions">
-                    <button id="drt-start-btn" class="drt-btn drt-btn-start">&#x25B6; Start Session</button>
-                    <button id="drt-pause-btn" class="drt-btn drt-btn-pause" style="display: none;">Pause</button>
-                    <button id="drt-stop-btn" class="drt-btn drt-btn-stop" disabled>&#x25A0; End Session</button>
-                </div>
-
-                <div class="drt-results" id="drt-results">
-                    <div class="drt-card drt-card-chief">
-                        <div class="drt-card-header">
-                            <span class="drt-card-icon">&#x1FA7A;</span>
-                            <span class="drt-card-title">Chief Complaint</span>
-                            <span class="drt-card-badge" id="drt-badge-chief-complaint">PENDING</span>
-                        </div>
-                        <div class="drt-card-content drt-empty" id="drt-chief-complaint">Waiting for session to begin...</div>
-                    </div>
-                    <div class="drt-card drt-card-diagnosis">
-                        <div class="drt-card-header">
-                            <span class="drt-card-icon">&#x1F4CB;</span>
-                            <span class="drt-card-title">Diagnosis</span>
-                            <span class="drt-card-badge" id="drt-badge-diagnosis">PENDING</span>
-                        </div>
-                        <div class="drt-card-content drt-empty" id="drt-diagnosis">Waiting for session to begin...</div>
-                    </div>
-                    <div class="drt-card drt-card-medicine">
-                        <div class="drt-card-header">
-                            <span class="drt-card-icon">&#x1F48A;</span>
-                            <span class="drt-card-title">Medicine</span>
-                            <span class="drt-card-badge" id="drt-badge-medicine">PENDING</span>
-                        </div>
-                        <div class="drt-card-content drt-empty" id="drt-medicine">Waiting for session to begin...</div>
-                    </div>
-                    <div class="drt-card drt-card-advice">
-                        <div class="drt-card-header">
-                            <span class="drt-card-icon">&#x1F4AC;</span>
-                            <span class="drt-card-title">Advice</span>
-                            <span class="drt-card-badge" id="drt-badge-advice">PENDING</span>
-                        </div>
-                        <div class="drt-card-content drt-empty" id="drt-advice">Waiting for session to begin...</div>
-                    </div>
-                    <div class="drt-card drt-card-nextsteps">
-                        <div class="drt-card-header">
-                            <span class="drt-card-icon">&#x27A1;</span>
-                            <span class="drt-card-title">Next Steps</span>
-                            <span class="drt-card-badge" id="drt-badge-next-steps">PENDING</span>
-                        </div>
-                        <div class="drt-card-content drt-empty" id="drt-next-steps">Waiting for session to begin...</div>
-                    </div>
+                <div class="drt-complete-actions" id="drt-complete-actions" style="display: none;">
+                    <button class="drt-btn-copy" id="drt-copy-btn">Copy to EMR</button>
+                    <a href="#" class="drt-pdf-link" id="drt-pdf-link">Download PDF</a>
                 </div>
             </div>
 
-            <div class="drt-footer">
-                <span class="drt-footer-version">drTranscribe v2.1</span>
-                <span class="drt-footer-status" id="drt-footer-status">&#x25CF; Not Recording</span>
-            </div>
+            <div class="drt-footer">Loop Scribe v1.0 &middot; HIPAA Compliant</div>
         `;
 
         document.body.appendChild(panel);
         setupPanelBehavior();
-        updatePatientDisplay();
-    }
-
-    /**
-     * Update patient display based on appointmentData availability
-     * Shows compact display if appointmentData exists, otherwise shows full form
-     */
-    function updatePatientDisplay() {
-        const displayEl = document.getElementById('drt-patient-display');
-        const formEl = document.getElementById('drt-patient-form-section');
-
-        if (!displayEl || !formEl) return;
-
-        if (appointmentData && appointmentData.patient) {
-            // Show compact display with avatar and metadata pills
-            displayEl.style.display = 'flex';
-            formEl.style.display = 'none';
-
-            const { name, age, gender } = appointmentData.patient;
-            const appointmentId = appointmentData.appointmentId || '';
-
-            // Avatar initials
-            const avatarEl = document.getElementById('drt-patient-avatar');
-            if (avatarEl) {
-                const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-                avatarEl.textContent = initials;
-            }
-
-            const nameEl = document.getElementById('drt-patient-name-display');
-            if (nameEl) nameEl.textContent = name;
-
-            const ageTag = document.getElementById('drt-patient-age-tag');
-            if (ageTag) ageTag.textContent = age ? `${age} yrs` : '';
-
-            const genderTag = document.getElementById('drt-patient-gender-tag');
-            if (genderTag) genderTag.textContent = gender || '';
-
-            const idTag = document.getElementById('drt-patient-id-tag');
-            if (idTag) idTag.textContent = appointmentId ? `ID #${appointmentId}` : '';
-        } else {
-            // Show full form for manual entry
-            displayEl.style.display = 'none';
-            formEl.style.display = 'block';
-        }
+        renderState();
     }
 
     function setupPanelBehavior() {
         const panel = document.getElementById('drt-panel');
         const header = document.getElementById('drt-header');
-        const body = document.getElementById('drt-body');
-        const collapseBtn = document.getElementById('drt-collapse');
-        const closeBtn = document.getElementById('drt-close');
-        const startBtn = document.getElementById('drt-start-btn');
-        const pauseBtn = document.getElementById('drt-pause-btn');
-        const stopBtn = document.getElementById('drt-stop-btn');
+        const minimizeBtn = document.getElementById('drt-minimize');
+        const primaryBtn = document.getElementById('drt-primary-btn');
+        const endBtn = document.getElementById('drt-end-btn');
+        const copyBtn = document.getElementById('drt-copy-btn');
+        const pdfLink = document.getElementById('drt-pdf-link');
 
         // ─── Dragging ──────────────────────────────────────
         let isDragging = false;
@@ -268,7 +223,7 @@
         let dragOffsetY = 0;
 
         header.addEventListener('mousedown', (e) => {
-            if (e.target.closest('.drt-btn-icon')) return;
+            if (e.target.closest('button')) return;
             isDragging = true;
             dragOffsetX = e.clientX - panel.offsetLeft;
             dragOffsetY = e.clientY - panel.offsetTop;
@@ -290,387 +245,281 @@
             panel.style.transition = '';
         });
 
-        // ─── Collapse / Close ──────────────────────────────
-        collapseBtn.addEventListener('click', () => {
-            isCollapsed = !isCollapsed;
-            body.style.display = isCollapsed ? 'none' : '';
-            collapseBtn.innerHTML = isCollapsed ? '&#x2B1C;' : '&#x2015;';
-            collapseBtn.title = isCollapsed ? 'Expand' : 'Collapse';
+        // ─── Minimize to badge ─────────────────────────────
+        minimizeBtn.addEventListener('click', minimizePanel);
+
+        // ─── Primary button (state-dependent) ──────────────
+        primaryBtn.addEventListener('click', () => {
+            if (panelState === 'ready') {
+                doStartSession();
+            } else if (panelState === 'recording') {
+                doPause();
+            } else if (panelState === 'paused') {
+                doResume();
+            } else if (panelState === 'completed') {
+                startNewSession();
+            }
         });
 
-        closeBtn.addEventListener('click', () => {
-            if (sessionPhase === 'recording') {
-                if (!confirm('Session is active. Stop session and close panel?')) return;
-                doStopSession();
-            }
-            panel.style.display = 'none';
-        });
+        // ─── End Session ───────────────────────────────────
+        endBtn.addEventListener('click', doEndSession);
 
-        // ─── Start Session ─────────────────────────────────
-        startBtn.addEventListener('click', () => {
-            let name, age, gender;
-            let appointmentId = null;
-            let history = null;
+        // ─── Copy to EMR (completed state) ─────────────────
+        copyBtn.addEventListener('click', doCopyToEMR);
 
-            // Use appointmentData if available, otherwise validate manual form
-            if (appointmentData && appointmentData.patient) {
-                // EMR mode: use received appointment data
-                name = appointmentData.patient.name;
-                age = appointmentData.patient.age || 0;
-                gender = appointmentData.patient.gender || '';
-                appointmentId = appointmentData.appointmentId || null;
-                history = appointmentData.patient.history || null;
-            } else {
-                // Manual mode: validate form inputs
-                const nameInput = document.getElementById('drt-patient-name');
-                const ageInput = document.getElementById('drt-patient-age');
-                const genderInput = document.getElementById('drt-patient-gender');
-
-                name = nameInput.value.trim();
-                age = parseInt(ageInput.value);
-                gender = genderInput.value;
-
-                if (!name) { nameInput.focus(); return alert('Please enter patient name'); }
-                if (!age || age < 0 || age > 150) { ageInput.focus(); return alert('Please enter a valid age'); }
-                if (!gender) { genderInput.focus(); return alert('Please select gender'); }
-            }
-
-            currentPatient = { name, age, gender };
-            setStatus('Connecting...', 'connecting');
-
-            // Build message payload
-            const payload = {
-                type: 'start-session',
-                patient: { name, age, gender }
-            };
-
-            // Include appointmentId and history if available
-            if (appointmentId) payload.appointmentId = appointmentId;
-            if (history) payload.history = history;
-
-            chrome.runtime.sendMessage(payload, (response) => {
-                if (chrome.runtime.lastError) {
-                    setStatus('Error', 'error');
-                    alert('Extension error: ' + chrome.runtime.lastError.message);
-                    return;
-                }
-                if (response && response.ok) {
-                    // session-started message will update UI
-                } else {
-                    setStatus('Failed', 'error');
-                    alert('Failed to start: ' + (response ? response.error : 'Unknown error'));
-                }
+        // ─── PDF export (secondary link, completed state) ──
+        pdfLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const settings = await chrome.storage.local.get(['doctorName', 'clinicName', 'doctor']);
+            window.DrTExport.exportPDF(currentPatient, {
+                doctorName: (settings.doctor && settings.doctor.name) || settings.doctorName || '',
+                clinicName: settings.clinicName || ''
             });
-        });
-
-        // ─── Pause / Resume ────────────────────────────────
-        pauseBtn.addEventListener('click', () => {
-            if (isPaused) {
-                // Resume: background reconnects / re-captures as needed
-                setStatus('Resuming...', 'connecting');
-                chrome.runtime.sendMessage({ type: 'resume-session' }, (response) => {
-                    if (chrome.runtime.lastError || !response || !response.ok) {
-                        const msg = (response && response.error) ||
-                            (chrome.runtime.lastError && chrome.runtime.lastError.message) ||
-                            'Could not resume the session. Try again or stop the session.';
-                        setStatus('Paused', '');
-                        alert(msg);
-                        return;
-                    }
-                    isPaused = false;
-                    pauseBtn.textContent = 'Pause';
-                });
-            } else {
-                // Pause: background pauses extraction + all audio capture
-                isPaused = true;
-                pauseBtn.textContent = 'Resume';
-                setStatus('Pausing...', 'connecting');
-                chrome.runtime.sendMessage({ type: 'pause-session' });
-            }
-        });
-
-        // ─── Stop Session ──────────────────────────────────
-        stopBtn.addEventListener('click', () => {
-            doStopSession();
         });
     }
 
-    function doStopSession() {
+    // ─── Session Actions ───────────────────────────────────────
+
+    function doStartSession() {
+        clearPanelError();
+
+        // Patient details come from the EMR handshake when available; the
+        // background ignores the patient payload (kept for contract compat).
+        let name = '', age = '', gender = '';
+        let appointmentId = null;
+        let history = null;
+        if (appointmentData && appointmentData.patient) {
+            name = appointmentData.patient.name || '';
+            age = appointmentData.patient.age || '';
+            gender = appointmentData.patient.gender || '';
+            appointmentId = appointmentData.appointmentId || null;
+            history = appointmentData.patient.history || null;
+        }
+        currentPatient = { name, age, gender };
+
+        setPrimaryBusy(true);
+        setStatusLine('Connecting…', 'drt-dot-amber drt-dot-pulse');
+
+        const payload = {
+            type: 'start-session',
+            patient: { name, age, gender }
+        };
+        if (appointmentId) payload.appointmentId = appointmentId;
+        if (history) payload.history = history;
+
+        chrome.runtime.sendMessage(payload, (response) => {
+            setPrimaryBusy(false);
+            if (chrome.runtime.lastError) {
+                renderState();
+                showPanelError('Extension error: ' + chrome.runtime.lastError.message);
+                return;
+            }
+            if (response && response.ok) {
+                // session-started message updates the UI
+            } else {
+                renderState();
+                // REGISTRATION_REQUIRED / TAB_CAPTURE_NEEDS_POPUP messages are
+                // already actionable ("click the toolbar icon ...") — render
+                // them verbatim in the banner.
+                showPanelError((response && response.error) || 'Could not start the session. Try again.');
+            }
+        });
+    }
+
+    function doPause() {
+        clearPanelError();
+        setState('paused'); // Optimistic — server session_paused confirms
+        chrome.runtime.sendMessage({ type: 'pause-session' });
+    }
+
+    function doResume() {
+        clearPanelError();
+        const primaryBtn = document.getElementById('drt-primary-btn');
+        if (primaryBtn) primaryBtn.disabled = true;
+        setStatusLine('Reconnecting…', 'drt-dot-amber drt-dot-pulse');
+        chrome.runtime.sendMessage({ type: 'resume-session' }, (response) => {
+            if (primaryBtn) primaryBtn.disabled = false;
+            if (chrome.runtime.lastError || !response || !response.ok) {
+                renderState(); // Back to Paused
+                showPanelError((response && response.error) ||
+                    (chrome.runtime.lastError && chrome.runtime.lastError.message) ||
+                    'Could not resume the session. Try again or end the session.');
+                return;
+            }
+            setState('recording');
+        });
+    }
+
+    function doEndSession() {
+        clearPanelError();
+        const endBtn = document.getElementById('drt-end-btn');
+        if (endBtn) { endBtn.disabled = true; endBtn.textContent = 'Ending…'; }
         chrome.runtime.sendMessage({ type: 'stop-session' }, (response) => {
-            // session-ended message will update UI
+            if (endBtn) { endBtn.disabled = false; endBtn.innerHTML = '&#x25A0; End Session'; }
             if (response && response.warning) {
                 showToast(response.warning);
             }
+            // session-ended message drives the state change to completed
         });
     }
 
-    // ─── UI Helpers ────────────────────────────────────────────
-
-    function setStatus(text, state) {
-        const statusEl = document.getElementById('drt-status');
-        if (statusEl) {
-            statusEl.textContent = text;
-            statusEl.className = 'drt-status';
-            if (state) statusEl.classList.add('drt-status-' + state);
+    /** Completed → start the next consult (resets cards, then starts). */
+    function startNewSession() {
+        latestExtraction = {};
+        const copyBtn = document.getElementById('drt-copy-btn');
+        if (copyBtn) {
+            copyBtn.innerHTML = 'Copy to EMR';
+            copyBtn.classList.remove('drt-copied');
         }
-        // Update footer status
-        const footerStatus = document.getElementById('drt-footer-status');
-        if (footerStatus) {
-            if (state === 'recording') {
-                footerStatus.textContent = '\u25CF Recording';
-                footerStatus.className = 'drt-footer-status drt-footer-recording';
-            } else {
-                footerStatus.textContent = '\u25CF Not Recording';
-                footerStatus.className = 'drt-footer-status';
+        setState('ready');
+        doStartSession();
+    }
+
+    // ─── Copy to EMR ───────────────────────────────────────────
+
+    function getEditedFields() {
+        const data = {};
+        for (const f of FIELDS) {
+            const el = document.getElementById('drt-field-' + f.key);
+            data[f.key] = el ? (el.innerText || '').trim() : '';
+        }
+        return data;
+    }
+
+    function doCopyToEMR() {
+        const copyBtn = document.getElementById('drt-copy-btn');
+        const extraction = getEditedFields();
+
+        // Formatted plain-text summary to the clipboard (DrTExport reads the
+        // edited drt-field-* values)
+        const ok = window.DrTExport ? window.DrTExport.exportClipboard(currentPatient) : false;
+
+        // Best-effort: also push to a connected EMR page (existing flow)
+        const sentToEmr = exportToEMR(extraction);
+        if (sentToEmr) showToast('Also sent to the connected EMR page');
+
+        if (ok !== false) {
+            if (copyBtn) {
+                copyBtn.innerHTML = '&#x2713; Copied to EMR';
+                copyBtn.classList.add('drt-copied');
+                setTimeout(() => {
+                    copyBtn.innerHTML = 'Copy to EMR';
+                    copyBtn.classList.remove('drt-copied');
+                }, 2500);
+            }
+        } else {
+            showToast('Copy failed — select the text and copy manually');
+        }
+    }
+
+    // ─── State Rendering ───────────────────────────────────────
+
+    function setState(state) {
+        panelState = state;
+        renderState();
+    }
+
+    function setStatusLine(label, dotClasses) {
+        const dot = document.getElementById('drt-status-dot');
+        const lab = document.getElementById('drt-status-label');
+        if (lab) lab.textContent = label;
+        if (dot) dot.className = 'drt-status-dot ' + (dotClasses || 'drt-dot-grey');
+    }
+
+    function setPrimaryBusy(busy) {
+        const primaryBtn = document.getElementById('drt-primary-btn');
+        if (primaryBtn) primaryBtn.disabled = busy;
+    }
+
+    function renderState() {
+        const meta = STATUS_META[panelState] || STATUS_META.ready;
+        setStatusLine(meta.label, meta.dot);
+
+        const primaryBtn = document.getElementById('drt-primary-btn');
+        const hint = document.getElementById('drt-hint');
+        const endBtn = document.getElementById('drt-end-btn');
+        const completeActions = document.getElementById('drt-complete-actions');
+        if (!primaryBtn) return; // Panel not built yet
+
+        if (panelState === 'recording') {
+            primaryBtn.innerHTML = '&#x23F8; Pause';
+        } else if (panelState === 'paused') {
+            primaryBtn.innerHTML = '&#x25B6; Resume';
+        } else if (panelState === 'completed') {
+            primaryBtn.innerHTML = '&#x25B6; Start New Session';
+        } else {
+            primaryBtn.innerHTML = '&#x25B6; Start Session';
+        }
+        primaryBtn.disabled = false;
+
+        const mid = panelState === 'recording' || panelState === 'paused';
+        if (hint) hint.style.display = mid ? '' : 'none';
+        if (endBtn) endBtn.style.display = mid ? '' : 'none';
+        if (completeActions) completeActions.style.display = panelState === 'completed' ? '' : 'none';
+
+        setCardsEditable(panelState === 'completed');
+        renderExtraction();
+        updateBadge();
+    }
+
+    /**
+     * Completed: cards become locally editable (plaintext). On entering the
+     * state each field is seeded once from the latest extraction; after that
+     * the DOM is the source of truth so edits are never clobbered.
+     */
+    function setCardsEditable(editable) {
+        for (const f of FIELDS) {
+            const el = document.getElementById('drt-field-' + f.key);
+            if (!el) continue;
+            const isEditable = el.classList.contains('drt-editable');
+            if (editable && !isEditable) {
+                const value = latestExtraction && latestExtraction[f.key];
+                el.textContent = (value && String(value).trim()) ? String(value).trim() : '';
+                el.classList.remove('drt-empty');
+                el.setAttribute('contenteditable', 'plaintext-only');
+                el.classList.add('drt-editable');
+            } else if (!editable && isEditable) {
+                el.removeAttribute('contenteditable');
+                el.classList.remove('drt-editable');
             }
         }
     }
 
-    function setSessionActive(active) {
-        const startBtn = document.getElementById('drt-start-btn');
-        const pauseBtn = document.getElementById('drt-pause-btn');
-        const stopBtn = document.getElementById('drt-stop-btn');
-        const nameInput = document.getElementById('drt-patient-name');
-        const ageInput = document.getElementById('drt-patient-age');
-        const genderInput = document.getElementById('drt-patient-gender');
-
-        if (startBtn) {
-            startBtn.disabled = active;
-            startBtn.style.display = active ? 'none' : '';
-        }
-        if (pauseBtn) {
-            pauseBtn.style.display = active ? '' : 'none';
-            pauseBtn.disabled = false;
-        }
-        if (stopBtn) stopBtn.disabled = !active;
-        if (nameInput) nameInput.disabled = active;
-        if (ageInput) ageInput.disabled = active;
-        if (genderInput) genderInput.disabled = active;
-
-        // Update badge state
-        const badge = document.getElementById('drt-badge');
-        if (badge) {
-            badge.classList.toggle('drt-badge-active', active);
-            badge.classList.toggle('drt-badge-detected', !active);
-        }
-    }
-
-    function updateExtractionResults(extraction) {
-        latestExtraction = extraction;
-        const fields = {
-            chief_complaint: document.getElementById('drt-chief-complaint'),
-            diagnosis: document.getElementById('drt-diagnosis'),
-            medicine: document.getElementById('drt-medicine'),
-            advice: document.getElementById('drt-advice'),
-            next_steps: document.getElementById('drt-next-steps')
-        };
-
-        for (const [key, el] of Object.entries(fields)) {
+    function renderExtraction() {
+        if (panelState === 'completed') return; // Fields are user-editable now
+        const listening = panelState === 'recording' || panelState === 'paused';
+        for (const f of FIELDS) {
+            const el = document.getElementById('drt-field-' + f.key);
             if (!el) continue;
-            const value = extraction[key];
-            if (value && value.trim()) {
+            const value = latestExtraction && latestExtraction[f.key];
+            if (value && String(value).trim()) {
                 el.textContent = value;
                 el.classList.remove('drt-empty');
-                // Update card badge
-                const badgeId = 'drt-badge-' + key.replace(/_/g, '-');
-                const badge = document.getElementById(badgeId);
-                if (badge) {
-                    badge.textContent = 'UPDATED';
-                    badge.classList.add('drt-badge-updated');
-                }
-            }
-        }
-    }
-
-    function resetResults() {
-        const ids = ['drt-chief-complaint', 'drt-diagnosis', 'drt-medicine', 'drt-advice', 'drt-next-steps'];
-        const badgeIds = ['drt-badge-chief-complaint', 'drt-badge-diagnosis', 'drt-badge-medicine', 'drt-badge-advice', 'drt-badge-next-steps'];
-        for (const id of ids) {
-            const el = document.getElementById(id);
-            if (el) {
-                el.textContent = 'Waiting for session to begin...';
+            } else {
+                el.textContent = listening ? 'Listening...' : 'Waiting for session to begin...';
                 el.classList.add('drt-empty');
             }
         }
-        for (const id of badgeIds) {
-            const el = document.getElementById(id);
-            if (el) {
-                el.textContent = 'PENDING';
-                el.classList.remove('drt-badge-updated');
-            }
-        }
     }
 
-    // ─── Post-Session Transition ───────────────────────────────
+    // ─── Error Banner ──────────────────────────────────────────
 
-    function transitionToPostSession() {
-        sessionPhase = 'post';
-        setStatus('Session Complete', '');
-
-        const fieldKeys = ['chief_complaint', 'diagnosis', 'medicine', 'advice', 'next_steps'];
-        const fieldIds = {
-            chief_complaint: 'drt-chief-complaint',
-            diagnosis: 'drt-diagnosis',
-            medicine: 'drt-medicine',
-            advice: 'drt-advice',
-            next_steps: 'drt-next-steps'
-        };
-
-        // Replace card content divs with editable textareas
-        for (const key of fieldKeys) {
-            const contentEl = document.getElementById(fieldIds[key]);
-            if (!contentEl) continue;
-
-            const currentText = contentEl.classList.contains('drt-empty') ? '' : contentEl.textContent;
-            const textarea = document.createElement('textarea');
-            textarea.id = 'drt-edit-' + key;
-            textarea.className = 'drt-card-textarea';
-            textarea.value = currentText;
-            textarea.placeholder = 'No data captured';
-            textarea.rows = 3;
-
-            contentEl.parentNode.replaceChild(textarea, contentEl);
-        }
-
-        // Hide start/stop buttons
-        const sessionActions = document.getElementById('drt-session-actions');
-        if (sessionActions) sessionActions.style.display = 'none';
-
-        // Inject export bar
-        const results = document.getElementById('drt-results');
-        if (results) {
-            const exportBar = document.createElement('div');
-            exportBar.id = 'drt-export-bar';
-            exportBar.className = 'drt-export-bar';
-            exportBar.innerHTML = `
-                <div class="drt-section-title">Export</div>
-                <div class="drt-export-actions">
-                    <button class="drt-btn-export drt-btn-export-primary" id="drt-export-emr" style="grid-column: 1 / -1;">Export to EMR</button>
-                    <button class="drt-btn-export" id="drt-export-pdf">Export PDF</button>
-                    <button class="drt-btn-export" id="drt-export-email">Open in Gmail</button>
-                    <button class="drt-btn-export" id="drt-export-clipboard">Copy to Clipboard</button>
-                    <button class="drt-btn-export" id="drt-export-txt">Download TXT</button>
-                </div>
-                <button class="drt-btn-new-session" id="drt-new-session">+ New Session</button>
-            `;
-            results.parentNode.insertBefore(exportBar, results.nextSibling);
-
-            // Wire export buttons
-
-            // Export to EMR
-            document.getElementById('drt-export-emr').addEventListener('click', () => {
-                const extraction = {
-                    chief_complaint: document.getElementById('drt-edit-chief_complaint')?.value || '',
-                    diagnosis: document.getElementById('drt-edit-diagnosis')?.value || '',
-                    medicine: document.getElementById('drt-edit-medicine')?.value || '',
-                    advice: document.getElementById('drt-edit-advice')?.value || '',
-                    next_steps: document.getElementById('drt-edit-next_steps')?.value || ''
-                };
-
-                const success = exportToEMR(extraction);
-                if (success) {
-                    showToast('Results sent to EMR page!');
-                } else {
-                    showToast('EMR page not available. Please open the EMR page first.');
-                }
-            });
-
-            document.getElementById('drt-export-pdf').addEventListener('click', async () => {
-                const settings = await chrome.storage.local.get(['doctorName', 'clinicName', 'doctor']);
-                window.DrTExport.exportPDF(currentPatient, {
-                    doctorName: (settings.doctor && settings.doctor.name) || settings.doctorName || '',
-                    clinicName: settings.clinicName || ''
-                });
-            });
-
-            document.getElementById('drt-export-email').addEventListener('click', () => {
-                window.DrTExport.exportEmail(currentPatient);
-                showToast('Content also copied to clipboard');
-            });
-
-            document.getElementById('drt-export-clipboard').addEventListener('click', () => {
-                const ok = window.DrTExport.exportClipboard(currentPatient);
-                showToast(ok !== false ? 'Copied to clipboard!' : 'Copy failed');
-            });
-
-            document.getElementById('drt-export-txt').addEventListener('click', () => {
-                window.DrTExport.exportTXT(currentPatient);
-            });
-
-            document.getElementById('drt-new-session').addEventListener('click', () => {
-                transitionToPreSession();
-            });
-        }
+    function showPanelError(message) {
+        const banner = document.getElementById('drt-error');
+        const text = document.getElementById('drt-error-text');
+        if (!banner || !text) return;
+        text.textContent = message;
+        banner.style.display = '';
     }
 
-    function transitionToPreSession() {
-        sessionPhase = 'pre';
-        latestExtraction = {};
-        setStatus('Ready', '');
-
-        const fieldKeys = ['chief_complaint', 'diagnosis', 'medicine', 'advice', 'next_steps'];
-        const fieldIds = {
-            chief_complaint: 'drt-chief-complaint',
-            diagnosis: 'drt-diagnosis',
-            medicine: 'drt-medicine',
-            advice: 'drt-advice',
-            next_steps: 'drt-next-steps'
-        };
-
-        // Replace textareas back with content divs
-        for (const key of fieldKeys) {
-            const textarea = document.getElementById('drt-edit-' + key);
-            if (!textarea) continue;
-
-            const div = document.createElement('div');
-            div.id = fieldIds[key];
-            div.className = 'drt-card-content drt-empty';
-            div.textContent = 'Waiting for session to begin...';
-
-            textarea.parentNode.replaceChild(div, textarea);
-
-            // Reset badge
-            const badgeId = 'drt-badge-' + key.replace(/_/g, '-');
-            const badge = document.getElementById(badgeId);
-            if (badge) {
-                badge.textContent = 'PENDING';
-                badge.classList.remove('drt-badge-updated');
-            }
-        }
-
-        // Remove export bar
-        const exportBar = document.getElementById('drt-export-bar');
-        if (exportBar) exportBar.remove();
-
-        // Show start/stop buttons
-        const sessionActions = document.getElementById('drt-session-actions');
-        if (sessionActions) sessionActions.style.display = '';
-
-        // Reset form
-        const nameInput = document.getElementById('drt-patient-name');
-        const ageInput = document.getElementById('drt-patient-age');
-        const genderInput = document.getElementById('drt-patient-gender');
-        if (nameInput) { nameInput.value = ''; nameInput.disabled = false; }
-        if (ageInput) { ageInput.value = ''; ageInput.disabled = false; }
-        if (genderInput) { genderInput.value = ''; genderInput.disabled = false; }
-
-        const startBtn = document.getElementById('drt-start-btn');
-        const stopBtn = document.getElementById('drt-stop-btn');
-        if (startBtn) startBtn.disabled = false;
-        if (stopBtn) stopBtn.disabled = true;
-
-        // Reset badge
-        const badge = document.getElementById('drt-badge');
-        if (badge) {
-            badge.classList.remove('drt-badge-active');
-            badge.classList.add('drt-badge-detected');
-        }
+    function clearPanelError() {
+        const banner = document.getElementById('drt-error');
+        if (banner) banner.style.display = 'none';
     }
 
     // ─── Toast Notification ────────────────────────────────────
 
     function showToast(message) {
-        // Remove existing toast
         const existing = document.getElementById('drt-toast');
         if (existing) existing.remove();
 
@@ -680,7 +529,6 @@
         toast.textContent = message;
         document.body.appendChild(toast);
 
-        // Trigger animation
         requestAnimationFrame(() => {
             toast.classList.add('drt-toast-visible');
         });
@@ -699,18 +547,15 @@
                 // Session may have been started from the popup on a page where
                 // the badge/panel don't exist yet (programmatic injection).
                 if (!document.getElementById('drt-badge')) injectBadge();
-                if (!document.getElementById('drt-panel')) injectPanel();
-                sessionPhase = 'recording';
-                isPaused = false;
-                setSessionActive(true);
-                setStatus('Recording', 'recording');
-                resetResults();
+                restorePanel(); // Direct user action — expanding is expected
+                latestExtraction = {};
+                clearPanelError();
+                setState('recording');
                 break;
 
             case 'session-ended':
-                setSessionActive(false);
-                if (sessionPhase === 'recording') {
-                    transitionToPostSession();
+                if (panelState === 'recording' || panelState === 'paused') {
+                    setState('completed');
                 }
                 if (message.reason) {
                     console.warn('[drT] Session ended:', message.reason);
@@ -718,36 +563,35 @@
                 break;
 
             case 'session_paused':
-                isPaused = true;
-                {
-                    const pb = document.getElementById('drt-pause-btn');
-                    if (pb) pb.textContent = 'Resume';
+                // Accept from any live state — a freshly injected panel (tab
+                // re-capture after loss) starts in 'ready' but the session is
+                // server-confirmed paused.
+                if (panelState !== 'completed') {
+                    setState('paused');
                 }
-                setStatus('Paused', '');
                 console.log('[drT] Session paused (server confirmed)');
                 break;
 
             case 'session_resumed':
-                isPaused = false;
-                {
-                    const pb = document.getElementById('drt-pause-btn');
-                    if (pb) pb.textContent = 'Pause';
-                }
-                setStatus('Recording', 'recording');
-                // Update extraction from server state if provided
                 if (message.extraction) {
-                    updateExtractionResults(message.extraction);
+                    latestExtraction = message.extraction;
+                }
+                if (panelState !== 'completed') {
+                    setState('recording');
                 }
                 console.log('[drT] Session resumed (server confirmed)');
                 break;
 
             case 'extraction_update':
-                updateExtractionResults(message.extraction);
+                latestExtraction = message.extraction || latestExtraction;
+                renderExtraction();
+                if (isMinimized) pulseBadge(); // Subtle nudge, no auto-expand
                 break;
 
             case 'error':
                 console.error('[drT] Error from backend:', message.message);
-                setStatus('Error', 'error');
+                showPanelError(message.message || 'The server reported an error.');
+                if (isMinimized) pulseBadge();
                 break;
         }
         return false;
@@ -811,20 +655,20 @@
     function handlePatientDataResponse(data) {
         console.log('[drT PostMessage] Patient data received:', data);
 
-        // Store appointment data for use in session and export
+        // Store appointment data for use in session start and export
         appointmentData = data;
-
-        // Update panel display if panel already exists
-        const panel = document.getElementById('drt-panel');
-        if (panel) {
-            updatePatientDisplay();
+        if (data.patient) {
+            currentPatient = {
+                name: data.patient.name || '',
+                age: data.patient.age || '',
+                gender: data.patient.gender || ''
+            };
         }
-        // If panel doesn't exist yet, updatePatientDisplay will be called by injectPanel
     }
 
     /**
-     * Export extraction results back to EMR page via Broadcast Channel
-     * Called after session ends and user clicks export
+     * Export extraction results back to EMR page via postMessage
+     * Called after session ends from Copy to EMR (best-effort)
      */
     function exportToEMR(extraction) {
         if (!window.opener || window.opener.closed) {

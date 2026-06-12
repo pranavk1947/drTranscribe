@@ -134,7 +134,7 @@ curl http://localhost:8000/health
 
 The extension popup (toolbar icon) is the main control surface and works on any normal web page — not just Meet/Zoom.
 
-**Doctor registration (optional, recommended):** on first open the popup shows **Register Now**. Fill in your name, mobile, email, and medical registration number — consults are then linked to your `doctor_id`. If your local data is ever wiped, use *"Already registered? Recover by email"*. You can start sessions without registering.
+**Doctor registration (required):** on first open the popup shows **Register Now** — fill in your name, mobile, email, and medical registration number; every consult is linked to your `doctor_id`. Starting a session is blocked with `REGISTRATION_REQUIRED` until you register (the popup hides Start, and the in-page panel shows an actionable error). If your local data is ever wiped, use *"Already registered? Recover by email"*.
 
 **Two consult modes** (selectable in the popup; the last choice is remembered):
 
@@ -144,10 +144,10 @@ The extension popup (toolbar icon) is the main control surface and works on any 
 **Running a session:**
 
 1. Click the extension icon, pick a mode, press **Start** (badge shows `REC`)
-2. On Meet/Zoom the floating **drT** panel appears automatically; on other pages the panel is injected where possible — otherwise the popup itself shows the live extraction cards
+2. On Meet/Zoom the floating **Loop Scribe** panel appears automatically (minimize it to a corner badge with **—**); on other pages the panel is injected where possible — otherwise the popup itself shows the live extraction cards
 3. Use **Pause/Resume** (badge shows `II` while paused); if the captured tab closes or the mic disconnects, the session auto-pauses instead of silently losing audio
 4. Press **Stop** when done — the extension waits for the server's final summary before closing
-5. On Meet/Zoom, use the panel's **Export** options (EMR/PDF/clipboard) after the session
+5. After the session the panel's cards become editable — use **Copy to EMR** (formatted plain text to the clipboard) or the **Download PDF** link
 
 The first Start may open a one-time microphone permission page — click **Allow** and start again.
 
