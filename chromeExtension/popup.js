@@ -37,6 +37,9 @@ const recoverEmail = document.getElementById('recover-email');
 const recoverBtn = document.getElementById('recover-btn');
 const recoverError = document.getElementById('recover-error');
 
+const micBanner = document.getElementById('mic-banner');
+const micEnableBtn = document.getElementById('mic-enable-btn');
+
 const modeButtons = Array.from(document.querySelectorAll('.popup-mode-btn'));
 const dualWarning = document.getElementById('dual-warning');
 
@@ -301,6 +304,9 @@ async function submitRegistration() {
         sessionLine.textContent = result.existing
             ? `Welcome back, Dr. ${name}! You can start a consult now.`
             : `Registered — welcome, Dr. ${name}! You can start a consult now.`;
+        // One-time mic setup right after registration, so the first Start is
+        // friction-free (no prompt at consult time).
+        ensureMicAfterRegistration();
         return;
     }
 
@@ -345,6 +351,7 @@ recoverBtn.addEventListener('click', async () => {
         renderDoctor(result.doctor);
         const name = (result.doctor.name || '').replace(/^dr\.?\s*/i, '');
         sessionLine.textContent = `Welcome back, Dr. ${name}! You can start a consult now.`;
+        ensureMicAfterRegistration();
     } else {
         recoverError.textContent = (result && result.error) || 'Lookup failed. Try again.';
     }
@@ -360,6 +367,58 @@ modeButtons.forEach(btn => {
         await sendMessage({ type: 'set-mode', mode: selectedMode });
     });
 });
+
+// ─── Microphone permission (one-time) ───────────────────────────────
+//
+// Mic access can't be granted at install and can't be reliably prompted
+// from the popup (the permission bubble closes the popup). It IS granted to
+// the extension origin and persists once given, so we prompt exactly once on
+// a dedicated page; the offscreen document then inherits it silently forever.
+
+let micPermissionStatus = null; // PermissionStatus, kept for onchange
+
+async function getMicState() {
+    try {
+        const status = await navigator.permissions.query({ name: 'microphone' });
+        // Re-render the banner whenever the OS/Chrome flips the grant.
+        if (micPermissionStatus !== status) {
+            micPermissionStatus = status;
+            status.onchange = () => renderMicBanner();
+        }
+        return status.state; // 'granted' | 'prompt' | 'denied'
+    } catch {
+        return 'prompt'; // Permissions API unavailable — assume not yet granted
+    }
+}
+
+async function renderMicBanner() {
+    const state = await getMicState();
+    micBanner.style.display = state === 'granted' ? 'none' : '';
+    if (state === 'denied') {
+        micBanner.querySelector('.popup-mic-text').textContent =
+            'Microphone is blocked for this extension. Click to see how to re-enable it.';
+    }
+}
+
+/** Open the one-time mic setup page. Returns immediately. */
+function openMicSetup() {
+    chrome.tabs.create({ url: chrome.runtime.getURL('permissions.html') }).catch(() => {});
+}
+
+/** Called after registration: if mic isn't granted yet, set it up now so the
+ *  doctor's first Start is friction-free. */
+async function ensureMicAfterRegistration() {
+    const state = await getMicState();
+    if (state !== 'granted') {
+        openMicSetup();
+        renderMicBanner(); // also leave the banner as a fallback on next open
+    }
+}
+
+micEnableBtn.addEventListener('click', openMicSetup);
+
+// Re-check when the doctor returns from the permissions tab.
+window.addEventListener('focus', () => renderMicBanner());
 
 // ─── Session controls ───────────────────────────────────────────────
 
@@ -534,6 +593,9 @@ async function refreshStatus() {
 
     // Render from authoritative background state
     await refreshStatus();
+
+    // Show the one-time mic banner if access isn't granted yet (hidden once it is)
+    renderMicBanner();
 
     // Surface a registration outcome that completed while the popup was closed
     try {

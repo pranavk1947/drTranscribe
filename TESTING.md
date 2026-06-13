@@ -35,8 +35,12 @@ Registered doctors persist in `tools/mock-doctors.json` — delete it to reset t
    required before a session can start. Register with valid details.
    - Mock terminal shows `POST /api/doctors → 201`. Popup header shows *Dr. \<name\>* and the
      session controls unlock without reopening the popup.
-3. Select **Ambient**, press **Start**. First ever start: a permissions page opens for mic access —
-   grant, then press Start again.
+   - **Immediately after registering**, a one-time mic-setup tab opens and Chrome prompts for
+     microphone access. Click **Allow** — the tab confirms and closes itself. This is the *only*
+     time you'll see it; the grant persists for the extension origin.
+3. Select **Ambient**, press **Start**. Because mic was granted during setup, recording starts
+   right away — no prompt, no extra tab. (If you skipped/denied the grant, a "Enable microphone"
+   banner shows in the popup; click it once.)
 4. Speak for ~20s. Expect: badge `REC`, extraction cards fill progressively (mock stages them
    every 2nd chunk), terminal logs `audio_chunk … source=ambient`.
 5. **Stop**. Expect terminal: final `extraction_update` *then* `session_stopped`; popup shows the

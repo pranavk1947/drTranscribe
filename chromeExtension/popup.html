@@ -18,6 +18,14 @@
       <button class="popup-btn popup-btn-small" id="error-action-btn" style="display: none;"></button>
     </div>
 
+    <!-- One-time microphone setup. Mic access is granted to the extension
+         origin and persists, so this shows only until the doctor grants it
+         once; after that it never appears again. -->
+    <div class="popup-mic-banner" id="mic-banner" style="display: none;">
+      <span class="popup-mic-text">One-time setup: enable the microphone so consults can be recorded.</span>
+      <button class="popup-btn popup-btn-small" id="mic-enable-btn">Enable microphone</button>
+    </div>
+
     <!-- Registration prompt (unregistered, form collapsed) — registration is
          required before a session can start -->
     <div class="popup-section" id="register-nudge" style="display: none;">
