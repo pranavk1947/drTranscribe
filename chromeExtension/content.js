@@ -100,13 +100,14 @@
         // Loop ring mark in pure CSS (dark green disc + lime ring)
         badge.innerHTML = '<span class="drt-badge-ring"></span><span class="drt-badge-dot" id="drt-badge-dot"></span>';
 
-        badge.addEventListener('click', async () => {
-            if (document.getElementById('drt-panel')) {
-                restorePanel();
-            } else {
-                // First time opening — request patient data from EMR
-                await requestPatientDataFromEMR();
-                restorePanel();
+        badge.addEventListener('click', () => {
+            // Open the panel FIRST and unconditionally — never gate the UI on
+            // the EMR handshake (on Meet/Zoom there's no opener, and any hiccup
+            // there must not leave the badge doing nothing).
+            restorePanel();
+            if (!badge.dataset.emrRequested) {
+                badge.dataset.emrRequested = '1';
+                requestPatientDataFromEMR().catch(() => {});
             }
         });
         document.body.appendChild(badge);
