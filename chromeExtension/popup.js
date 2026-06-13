@@ -595,6 +595,18 @@ async function refreshStatus() {
 }
 
 (async function init() {
+    // ── Diagnostic: prove the popup loaded and which tab/window it sees.
+    // Right-click the popup → Inspect to read these in the popup console.
+    console.log('[drT popup] loaded; popup IS rendering. URL:', location.href);
+    try {
+        const cur = await chrome.tabs.query({ active: true, currentWindow: true });
+        const foc = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        console.log('[drT popup] currentWindow active tab:', cur[0] && cur[0].id, cur[0] && cur[0].url);
+        console.log('[drT popup] lastFocusedWindow active tab:', foc[0] && foc[0].id, foc[0] && foc[0].url);
+    } catch (e) {
+        console.warn('[drT popup] tab query failed:', e.message);
+    }
+
     // Settings
     chrome.storage.local.get(['serverUrl'], (result) => {
         serverUrlInput.value = result.serverUrl || DEFAULT_SERVER_URL;
