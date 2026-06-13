@@ -119,7 +119,8 @@ async function updateDualWarning() {
         dualWarning.style.display = 'none';
         return;
     }
-    const result = await sendMessage({ type: 'check-active-tab' });
+    const tabId = await getActiveTabId();
+    const result = await sendMessage({ type: 'check-active-tab', tabId });
     if (result && result.capturable === false) {
         dualWarning.textContent = "The current tab can't be audio-captured (restricted page). Open the consult tab first, or use Ambient mode.";
         dualWarning.style.display = '';
@@ -362,14 +363,34 @@ modeButtons.forEach(btn => {
 
 // ─── Session controls ───────────────────────────────────────────────
 
+/**
+ * Resolve the tab the doctor is actually looking at.
+ *
+ * This MUST run in the popup, not the background service worker: a service
+ * worker has no owning window, so chrome.tabs.query({currentWindow:true})
+ * there resolves to Chrome's last-focused window — which may be a different
+ * window/tab than the one the doctor invoked the extension from. Querying
+ * from the popup makes "currentWindow" unambiguously the popup's own window.
+ */
+async function getActiveTabId() {
+    try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        return tabs && tabs[0] ? tabs[0].id : null;
+    } catch {
+        return null; // background will fall back to its own query
+    }
+}
+
 async function doStart(freshAppointmentId) {
     clearError();
     startBtn.disabled = true; // Double-click guard (background also guards)
     startBtn.textContent = 'Starting…';
 
+    const tabId = await getActiveTabId();
     const result = await sendMessage({
         type: 'start-session',
         mode: selectedMode,
+        tabId: tabId,
         freshAppointmentId: !!freshAppointmentId
     });
 

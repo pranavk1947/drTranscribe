@@ -1070,8 +1070,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'check-active-tab':
             (async () => {
-                const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-                const tab = tabs[0];
+                // Prefer the tab the popup resolved (its window is unambiguous);
+                // fall back to a best-effort SW-side query only if absent.
+                let tab = null;
+                if (message.tabId != null) {
+                    tab = await chrome.tabs.get(message.tabId).catch(() => null);
+                }
+                if (!tab) {
+                    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                    tab = tabs[0] || null;
+                }
                 sendResponse({
                     capturable: tab ? !isRestrictedUrl(tab.url) : false,
                     url: tab ? tab.url : null
