@@ -44,6 +44,8 @@ let session = {
     serverUrl: null,
     audioConfig: null,
     targetTabId: null,         // Tab being captured (dual) / panel host
+    panelUnavailable: false,   // True when the host tab is a chrome:// / New Tab
+                               // page where Chrome forbids panel injection
     lostCapture: { mic: false, tab: false }
 };
 
@@ -190,6 +192,7 @@ async function buildStatus() {
         latestExtraction: latestExtraction,
         serverHealthy: lastServerHealthy,
         lostCapture: session.lostCapture,
+        panelUnavailable: session.panelUnavailable,
         isStarting: isStarting
     };
 }
@@ -697,6 +700,11 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
             targetTab = tabs[0] || null;
         }
         session.targetTabId = targetTab ? targetTab.id : null;
+        // Chrome forbids injecting into chrome:// pages and the New Tab page.
+        // Ambient can still run (mic-only), but there's no in-page panel there
+        // — the popup becomes the live-notes surface. Flag it so the popup can
+        // say so instead of the doctor wondering where the panel went.
+        session.panelUnavailable = !targetTab || isRestrictedUrl(targetTab.url);
 
         // 2. Health check first — clear error if server is down
         session.serverUrl = await getServerUrl();

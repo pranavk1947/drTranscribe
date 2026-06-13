@@ -48,6 +48,7 @@ const pauseBtn = document.getElementById('pause-btn');
 const resumeBtn = document.getElementById('resume-btn');
 const stopBtn = document.getElementById('stop-btn');
 const sessionLine = document.getElementById('session-line');
+const panelNote = document.getElementById('panel-note');
 const extractionSection = document.getElementById('extraction-section');
 
 const serverUrlInput = document.getElementById('server-url');
@@ -186,6 +187,15 @@ function renderStatus(status) {
     renderMode(status.mode || 'dual', status.sessionActive);
     renderControls(status);
     renderExtraction(status.latestExtraction);
+
+    // Chrome blocks the on-page panel on chrome:// and New Tab pages. When the
+    // session is running on such a tab, tell the doctor the popup IS the panel.
+    if (status.sessionActive && status.panelUnavailable) {
+        panelNote.textContent = "This Chrome page can't show the floating panel — your live notes appear here in the popup. Open a normal website to get the on-page panel.";
+        panelNote.style.display = '';
+    } else {
+        panelNote.style.display = 'none';
+    }
 }
 
 // ─── Registration ───────────────────────────────────────────────────
