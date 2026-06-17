@@ -29,6 +29,7 @@ const regName = document.getElementById('reg-name');
 const regPhone = document.getElementById('reg-phone');
 const regEmail = document.getElementById('reg-email');
 const regRegno = document.getElementById('reg-regno');
+const regClinic = document.getElementById('reg-clinic');
 const regSubmitBtn = document.getElementById('reg-submit-btn');
 const regCancelBtn = document.getElementById('reg-cancel-btn');
 const recoverLink = document.getElementById('recover-link');
@@ -57,7 +58,7 @@ const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
 
 let currentStatus = null;
-let selectedMode = 'dual';
+let selectedMode = 'ambient'; // 'ambient' = In person (contract default), 'dual' = Virtual visit
 
 // ─── Messaging helpers ──────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ async function updateDualWarning() {
     const tabId = await getActiveTabId();
     const result = await sendMessage({ type: 'check-active-tab', tabId });
     if (result && result.capturable === false) {
-        dualWarning.textContent = "The current tab can't be audio-captured (restricted page). Open the consult tab first, or use Ambient mode.";
+        dualWarning.textContent = "The current tab can't be audio-captured (restricted page). Open the consult tab first, or switch to In person mode.";
         dualWarning.style.display = '';
     } else {
         dualWarning.style.display = 'none';
@@ -138,7 +139,7 @@ function renderControls(status) {
     // Registration is required before a session can start (the background
     // enforces this with REGISTRATION_REQUIRED; here we hide Start and make
     // registration the primary action).
-    const registered = !!(status.doctor && status.doctor.doctor_id);
+    const registered = !!(status.doctor && status.doctor.id);
     startBtn.style.display = (sessionActive || !registered) ? 'none' : '';
     startBtn.disabled = !!isStarting || !registered;
     startBtn.textContent = isStarting ? 'Starting…' : '▶ Start';
@@ -184,7 +185,7 @@ function renderExtraction(extraction) {
 function renderStatus(status) {
     currentStatus = status;
     renderDoctor(status.doctor);
-    renderMode(status.mode || 'dual', status.sessionActive);
+    renderMode(status.mode || 'ambient', status.sessionActive);
     renderControls(status);
     renderExtraction(status.latestExtraction);
 
@@ -204,7 +205,8 @@ const regFields = {
     name: { input: regName, errorEl: document.getElementById('reg-name-error') },
     phone: { input: regPhone, errorEl: document.getElementById('reg-phone-error') },
     email: { input: regEmail, errorEl: document.getElementById('reg-email-error') },
-    medical_registration_number: { input: regRegno, errorEl: document.getElementById('reg-regno-error') }
+    medical_registration_number: { input: regRegno, errorEl: document.getElementById('reg-regno-error') },
+    clinic_name: { input: regClinic, errorEl: document.getElementById('reg-clinic-error') }
 };
 
 function setFieldError(field, message) {
@@ -224,7 +226,8 @@ function validateRegistrationForm() {
     const name = regName.value.trim();
     const phone = regPhone.value.trim().replace(/[\s-]/g, '');
     const email = regEmail.value.trim();
-    const regno = regRegno.value.trim();
+    const regno = regRegno.value.trim();      // optional per contract
+    const clinic = regClinic.value.trim();    // optional per contract
     let valid = true;
 
     if (!name) { setFieldError('name', 'Name is required.'); valid = false; }
@@ -238,9 +241,14 @@ function validateRegistrationForm() {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         setFieldError('email', 'Enter a valid email address.'); valid = false;
     }
-    if (!regno) { setFieldError('medical_registration_number', 'Registration number is required.'); valid = false; }
 
-    return valid ? { name, phone, email, medical_registration_number: regno } : null;
+    return valid ? {
+        name,
+        phone,
+        email,
+        medical_registration_number: regno,
+        clinic_name: clinic
+    } : null;
 }
 
 function saveRegDraft() {
@@ -250,6 +258,7 @@ function saveRegDraft() {
             phone: regPhone.value,
             email: regEmail.value,
             regno: regRegno.value,
+            clinic: regClinic.value,
             open: registerForm.style.display !== 'none'
         }
     }).catch(() => {});
@@ -263,6 +272,7 @@ async function restoreRegDraft() {
             regPhone.value = regDraft.phone || '';
             regEmail.value = regDraft.email || '';
             regRegno.value = regDraft.regno || '';
+            regClinic.value = regDraft.clinic || '';
             if (regDraft.open) openRegisterForm();
         }
     } catch {}
@@ -282,7 +292,7 @@ function closeRegisterForm() {
 
 registerNowBtn.addEventListener('click', () => { clearError(); openRegisterForm(); });
 regCancelBtn.addEventListener('click', closeRegisterForm);
-[regName, regPhone, regEmail, regRegno].forEach(input => {
+[regName, regPhone, regEmail, regRegno, regClinic].forEach(input => {
     input.addEventListener('input', saveRegDraft);
 });
 
@@ -388,6 +398,7 @@ modeButtons.forEach(btn => {
 let micPermissionStatus = null; // PermissionStatus, kept for onchange
 
 async function getMicState() {
+    let queried = 'prompt';
     try {
         const status = await navigator.permissions.query({ name: 'microphone' });
         // Re-render the banner whenever the OS/Chrome flips the grant.
@@ -395,10 +406,27 @@ async function getMicState() {
             micPermissionStatus = status;
             status.onchange = () => renderMicBanner();
         }
-        return status.state; // 'granted' | 'prompt' | 'denied'
-    } catch {
-        return 'prompt'; // Permissions API unavailable — assume not yet granted
+        queried = status.state; // 'granted' | 'prompt' | 'denied'
+    } catch { /* Permissions API unavailable — fall back to the stored flag */ }
+
+    if (queried === 'granted') return 'granted';
+
+    // navigator.permissions.query is unreliable for the microphone on
+    // chrome-extension:// pages: it keeps reporting 'prompt' even after a real
+    // getUserMedia grant, which is what made the Enable-microphone banner loop.
+    // The permissions page records a ground-truth `micGranted` flag after a
+    // successful grant; trust it. Background clears it again if capture ever
+    // fails with NotAllowedError, so a revoked permission re-shows the banner.
+    if (queried === 'denied') {
+        // An explicit block wins — drop any stale grant flag so we're honest.
+        try { await chrome.storage.local.remove('micGranted'); } catch { /* noop */ }
+        return 'denied';
     }
+    try {
+        const { micGranted } = await chrome.storage.local.get('micGranted');
+        if (micGranted) return 'granted';
+    } catch { /* storage unavailable */ }
+    return 'prompt';
 }
 
 async function renderMicBanner() {
@@ -489,7 +517,7 @@ async function doStart(freshAppointmentId) {
         });
     } else if (code === 'TAB_NOT_CAPTURABLE') {
         showError(message, {
-            label: 'Use Ambient',
+            label: 'Use In person',
             onClick: async () => {
                 clearError();
                 selectedMode = 'ambient';

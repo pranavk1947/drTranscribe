@@ -38,7 +38,7 @@ let session = {
     active: false,
     paused: false,
     pausedReason: null,        // Human-readable reason for auto-pause, if any
-    mode: 'dual',              // 'dual' | 'ambient'
+    mode: 'ambient',           // 'dual' (Virtual visit) | 'ambient' (In person)
     appointmentId: null,
     doctorId: null,
     serverUrl: null,
@@ -179,7 +179,7 @@ async function buildStatus() {
     if (!session.active) {
         try {
             const stored = await chrome.storage.local.get('lastMode');
-            mode = stored.lastMode || 'dual';
+            mode = stored.lastMode || 'ambient';
         } catch {}
     }
     return {
@@ -258,17 +258,22 @@ async function registerDoctor(form) {
     }
 
     const serverUrl = await getServerUrl();
+    // Contract: POST /users. Required: name, phone, email. Optional:
+    // medical_registration_number, clinic_name (omitted when blank).
+    const payload = {
+        name: form.name,
+        phone: form.phone,
+        email: form.email
+    };
+    if (form.medical_registration_number) payload.medical_registration_number = form.medical_registration_number;
+    if (form.clinic_name) payload.clinic_name = form.clinic_name;
+
     let response;
     try {
-        response = await fetchWithTimeout(`${serverUrl}/api/doctors`, {
+        response = await fetchWithTimeout(`${serverUrl}/users`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: form.name,
-                phone: form.phone,
-                email: form.email,
-                medical_registration_number: form.medical_registration_number
-            })
+            body: JSON.stringify(payload)
         });
     } catch (err) {
         return {
@@ -282,21 +287,23 @@ async function registerDoctor(form) {
     try { body = await response.json(); } catch {}
 
     if (response.status === 201) {
-        const doctor = body.doctor || body;
+        // Contract: 201 body IS the user object (id, name, email, ...).
+        const doctor = body;
         await chrome.storage.local.set({ doctor });
         await chrome.storage.session.remove('registrationError').catch(() => {});
-        console.log('[BG] Doctor registered:', doctor.doctor_id);
+        console.log('[BG] Doctor registered:', doctor.id);
         broadcastStatus();
         return { ok: true, doctor };
     }
 
     if (response.status === 409) {
-        // DOCTOR_ALREADY_EXISTS — body contains the existing doctor object
+        // DOCTOR_ALREADY_EXISTS — body carries the existing user under `doctor`
+        // so FE can self-heal (error_code, message, doctor).
         const doctor = body.doctor || body;
-        if (doctor && doctor.doctor_id) {
+        if (doctor && doctor.id) {
             await chrome.storage.local.set({ doctor });
             await chrome.storage.session.remove('registrationError').catch(() => {});
-            console.log('[BG] Doctor already existed, recovered:', doctor.doctor_id);
+            console.log('[BG] Doctor already existed, recovered:', doctor.id);
             broadcastStatus();
             return { ok: true, doctor, existing: true };
         }
@@ -307,12 +314,23 @@ async function registerDoctor(form) {
         };
     }
 
-    if (response.status === 400) {
+    if (response.status === 422) {
+        // Contract: standard FastAPI/Pydantic validation errors. The detail is
+        // an array of { loc: ["body", <field>], msg, type } — flatten it into a
+        // per-field map the popup can render inline.
+        const fields = {};
+        if (Array.isArray(body.detail)) {
+            for (const item of body.detail) {
+                const loc = Array.isArray(item.loc) ? item.loc : [];
+                const field = loc[loc.length - 1];
+                if (field && !fields[field]) fields[field] = item.msg || 'Invalid value.';
+            }
+        }
         return {
             ok: false,
             code: 'VALIDATION_ERROR',
-            fields: body.fields || body.errors || {},
-            error: body.message || 'Some fields were rejected by the server. Fix the highlighted fields and submit again.'
+            fields,
+            error: 'Some fields were rejected by the server. Fix the highlighted fields and submit again.'
         };
     }
 
@@ -329,12 +347,12 @@ async function lookupDoctorByEmail(email) {
     }
     const serverUrl = await getServerUrl();
     try {
+        // Contract: GET /users/{email} → full user object, or 404 USER_NOT_FOUND.
         const response = await fetchWithTimeout(
-            `${serverUrl}/api/doctors/lookup?email=${encodeURIComponent(email)}`
+            `${serverUrl}/users/${encodeURIComponent(email.trim().toLowerCase())}`
         );
         if (response.status === 200) {
-            const body = await response.json();
-            const doctor = body.doctor || body;
+            const doctor = await response.json();
             await chrome.storage.local.set({ doctor });
             broadcastStatus();
             return { ok: true, doctor };
@@ -354,14 +372,15 @@ async function lookupDoctorByEmail(email) {
  */
 async function refreshDoctor() {
     const doctor = await getStoredDoctor();
-    if (!doctor || !doctor.doctor_id) return { ok: true, doctor: null };
+    if (!doctor || !doctor.email) return { ok: true, doctor: null };
     const serverUrl = await getServerUrl();
     try {
-        const response = await fetchWithTimeout(`${serverUrl}/api/doctors/${encodeURIComponent(doctor.doctor_id)}`);
+        // Contract: profile refresh is a GET /users/{email} (email is the
+        // uniqueness key; there is no GET-by-id endpoint).
+        const response = await fetchWithTimeout(`${serverUrl}/users/${encodeURIComponent(doctor.email.trim().toLowerCase())}`);
         if (response.status === 200) {
-            const body = await response.json();
-            const fresh = body.doctor || body;
-            if (fresh && fresh.doctor_id) {
+            const fresh = await response.json();
+            if (fresh && fresh.id) {
                 await chrome.storage.local.set({ doctor: fresh });
                 return { ok: true, doctor: fresh };
             }
@@ -426,7 +445,9 @@ function handleServerMessage(message) {
             break;
 
         case 'error': {
-            const code = message.code || '';
+            // Contract: WS error frames carry `error_code` (REST errors do too).
+            // Tolerate legacy `code` for safety.
+            const code = message.error_code || message.code || '';
             const text = message.message || '';
             if (code === 'INVALID_SOURCE_FOR_MODE' || text.includes('INVALID_SOURCE_FOR_MODE')) {
                 // Should never happen — stop cleanly, no retry loop
@@ -501,7 +522,7 @@ function connectWebSocket({ resume = false } = {}) {
                 if (message.type === 'error') {
                     settled = true;
                     clearTimeout(ackTimer);
-                    const code = message.code ||
+                    const code = message.error_code || message.code ||
                         ((message.message || '').includes('already active') ||
                          (message.message || '').includes('SESSION_ALREADY_ACTIVE')
                             ? 'SESSION_ALREADY_ACTIVE' : 'SERVER_ERROR');
@@ -675,7 +696,7 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
         //    Start while unregistered, and the in-page panel renders this
         //    error actionably.
         const doctor = await getStoredDoctor();
-        if (!doctor || !doctor.doctor_id) {
+        if (!doctor || !doctor.id) {
             if (fromPanel) {
                 // Best-effort: surface the popup so the doctor lands on the
                 // registration form (Chrome may reject this without a fresh
@@ -689,7 +710,7 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
 
         // 1. Resolve mode + target tab
         const stored = await chrome.storage.local.get('lastMode');
-        session.mode = mode || stored.lastMode || 'dual';
+        session.mode = mode || stored.lastMode || 'ambient';
         await chrome.storage.local.set({ lastMode: session.mode });
 
         let targetTab = null;
@@ -715,7 +736,7 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
         session.audioConfig = await fetchAudioConfig(session.serverUrl);
 
         // 3. Doctor — guaranteed present by the registration gate (step 0)
-        session.doctorId = doctor.doctor_id;
+        session.doctorId = doctor.id;
 
         // 4. Appointment id
         session.appointmentId = freshAppointmentId
@@ -761,6 +782,13 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
             const name = captureResult && captureResult.name;
             if (captureResult && captureResult.which === 'mic' &&
                 (name === 'NotAllowedError' || name === 'NotFoundError' || name === 'SecurityError')) {
+                // A permission-level failure means the stored grant flag is stale
+                // — clear it so the popup re-shows the Enable-microphone banner.
+                // (NotFoundError is a missing device, not a revoked grant, so the
+                // flag stays put in that case.)
+                if (name === 'NotAllowedError' || name === 'SecurityError') {
+                    chrome.storage.local.remove('micGranted').catch(() => {});
+                }
                 // Offscreen can't show the permission prompt — open helper page
                 chrome.tabs.create({ url: chrome.runtime.getURL('permissions.html') }).catch(() => {});
                 const err = new Error('Microphone access needed — grant it in the tab that just opened, then press Start again.');
@@ -967,6 +995,11 @@ async function resumeSession() {
         const result = await sendToOffscreen({ type: 'offscreen-restart-mic' });
         if (!result || !result.ok) {
             if (result && (result.name === 'NotAllowedError' || result.name === 'NotFoundError')) {
+                // Revoked permission (not a mere unplugged device) → drop the
+                // stale grant flag so the banner returns.
+                if (result.name === 'NotAllowedError') {
+                    chrome.storage.local.remove('micGranted').catch(() => {});
+                }
                 chrome.tabs.create({ url: chrome.runtime.getURL('permissions.html') }).catch(() => {});
                 throw new Error('Microphone unavailable — reconnect it (or grant access in the tab that just opened), then press Resume.');
             }

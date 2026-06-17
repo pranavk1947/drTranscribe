@@ -451,6 +451,9 @@
         } else {
             primaryBtn.innerHTML = '&#x25B6; Start Session';
         }
+        // Green for "go" states (Start / Resume / Start New); calm amber outline
+        // for the Pause action so it doesn't read as a green go-button.
+        primaryBtn.classList.toggle('drt-primary-warn', panelState === 'recording');
         primaryBtn.disabled = false;
 
         const mid = panelState === 'recording' || panelState === 'paused';

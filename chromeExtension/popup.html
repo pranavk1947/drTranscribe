@@ -42,8 +42,10 @@
       <div class="popup-field-error" id="reg-phone-error"></div>
       <input type="email" id="reg-email" class="popup-input popup-input-full" placeholder="Email" />
       <div class="popup-field-error" id="reg-email-error"></div>
-      <input type="text" id="reg-regno" class="popup-input popup-input-full" placeholder="Medical registration number" />
+      <input type="text" id="reg-regno" class="popup-input popup-input-full" placeholder="Medical registration number (optional)" />
       <div class="popup-field-error" id="reg-regno-error"></div>
+      <input type="text" id="reg-clinic" class="popup-input popup-input-full" placeholder="Clinic name (optional)" />
+      <div class="popup-field-error" id="reg-clinic-error"></div>
       <div class="popup-input-row">
         <button class="popup-btn" id="reg-submit-btn">Register</button>
         <button class="popup-btn popup-btn-ghost" id="reg-cancel-btn">Cancel</button>
@@ -59,9 +61,9 @@
     <!-- Mode selector -->
     <div class="popup-section">
       <div class="popup-label">Consult Mode</div>
-      <div class="popup-mode-toggle" id="mode-toggle">
-        <button class="popup-mode-btn" data-mode="ambient" id="mode-ambient">Ambient<span>in-person</span></button>
-        <button class="popup-mode-btn" data-mode="dual" id="mode-dual">Dual<span>teleconsult</span></button>
+      <div class="popup-mode-toggle" id="mode-toggle" role="tablist">
+        <button class="popup-mode-btn" data-mode="dual" id="mode-dual" role="tab">Virtual visit</button>
+        <button class="popup-mode-btn" data-mode="ambient" id="mode-ambient" role="tab">In person</button>
       </div>
       <div class="popup-hint popup-warn" id="dual-warning" style="display: none;"></div>
     </div>

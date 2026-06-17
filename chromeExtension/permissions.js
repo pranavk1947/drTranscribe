@@ -21,6 +21,11 @@ async function requestMic() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach(track => track.stop()); // we only needed the grant
+        // Ground-truth signal: a real getUserMedia just succeeded. The popup
+        // can't rely on navigator.permissions.query (it keeps returning 'prompt'
+        // for extension origins even after a grant), so we persist this flag and
+        // the popup trusts it. Background clears it again if capture ever fails.
+        try { await chrome.storage.local.set({ micGranted: true }); } catch { /* storage unavailable */ }
         resultOk.classList.add('ok');
         grantBtn.disabled = true;
         grantBtn.textContent = 'Access granted';
@@ -42,6 +47,7 @@ grantBtn.addEventListener('click', requestMic);
     try {
         const status = await navigator.permissions.query({ name: 'microphone' });
         if (status.state === 'granted') {
+            try { await chrome.storage.local.set({ micGranted: true }); } catch { /* storage unavailable */ }
             resultOk.classList.add('ok');
             grantBtn.disabled = true;
             grantBtn.textContent = 'Access granted';
