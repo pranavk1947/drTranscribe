@@ -67,6 +67,57 @@
 
     let panelState = 'ready';        // 'ready' | 'recording' | 'paused' | 'completed'
     let isMinimized = false;         // Per-tab, in-memory minimized flag
+    let userDismissed = false;       // True after the doctor closes (X) the panel — suppresses re-injection until a new session
+
+    // Live mic meter + self-mute
+    const METER_BARS = 30;
+    let barLevels = new Array(METER_BARS).fill(0);
+    let micMutedLocal = false;
+    const MIC_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>';
+    const MIC_OFF_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="2" x2="22" y2="22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><path d="M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>';
+
+    function buildMeterBars() {
+        const bars = document.getElementById('drt-bars');
+        if (!bars || bars.childElementCount) return;
+        for (let i = 0; i < METER_BARS; i++) bars.appendChild(document.createElement('span'));
+    }
+
+    function renderMeterBars() {
+        const bars = document.getElementById('drt-bars');
+        if (!bars) return;
+        const c = bars.children;
+        for (let i = 0; i < c.length; i++) {
+            const lvl = barLevels[i] || 0;
+            c[i].style.height = (12 + Math.round(lvl * 88)) + '%';
+        }
+    }
+
+    /** Scroll a new level into the bars (newest on the right) — recorder look. */
+    function pushMicLevel(level) {
+        barLevels.push(level);
+        if (barLevels.length > METER_BARS) barLevels.shift();
+        renderMeterBars();
+    }
+
+    function setMuteUi(muted) {
+        micMutedLocal = !!muted;
+        const btn = document.getElementById('drt-mute-btn');
+        const ico = document.getElementById('drt-mute-ico');
+        const meter = document.getElementById('drt-meter');
+        if (ico) ico.innerHTML = micMutedLocal ? MIC_OFF_SVG : MIC_SVG;
+        if (btn) btn.title = micMutedLocal ? 'Unmute microphone' : 'Mute microphone';
+        if (meter) meter.classList.toggle('drt-meter-muted', micMutedLocal);
+        if (micMutedLocal) { barLevels.fill(0); renderMeterBars(); }
+    }
+
+    function toggleMute() {
+        const next = !micMutedLocal;
+        setMuteUi(next); // optimistic
+        chrome.runtime.sendMessage({ type: 'toggle-mute' }, (resp) => {
+            if (chrome.runtime.lastError || !resp || !resp.ok) { setMuteUi(!next); return; }
+            setMuteUi(!!resp.muted);
+        });
+    }
     let currentPatient = { name: '', age: '', gender: '' };
     let latestExtraction = {};
     let appointmentData = null;      // Received appointment/patient data (via postMessage)
@@ -92,6 +143,7 @@
     // ─── Minimize Badge ────────────────────────────────────────
 
     function injectBadge() {
+        if (userDismissed) return; // Doctor closed the UI — don't bring it back until a new session
         if (document.getElementById('drt-badge')) return;
         const badge = document.createElement('div');
         badge.id = 'drt-badge';
@@ -133,6 +185,22 @@
         isMinimized = false;
         const badge = document.getElementById('drt-badge');
         if (badge) badge.style.display = 'none';
+    }
+
+    /**
+     * Dismiss the whole UI (panel + badge). Only allowed when there's no live
+     * session — during recording/paused the X is hidden, so this is a no-op
+     * guard. Sets userDismissed so SPA navigation won't re-inject the badge;
+     * a new session (session-started) clears the flag and brings the UI back.
+     */
+    function closePanel() {
+        if (panelState === 'recording' || panelState === 'paused') return;
+        const panel = document.getElementById('drt-panel');
+        if (panel) panel.remove();
+        const badge = document.getElementById('drt-badge');
+        if (badge) badge.remove();
+        isMinimized = false;
+        userDismissed = true;
     }
 
     /** Status dot overlay on the badge mirrors the session state. */
@@ -180,6 +248,7 @@
                     <span id="drt-status-label">Ready</span>
                 </span>
                 <button class="drt-btn-min" id="drt-minimize" title="Minimize">&#x2014;</button>
+                <button class="drt-btn-min drt-btn-close" id="drt-close" title="Close">&#x2715;</button>
             </div>
 
             <div class="drt-error" id="drt-error" style="display: none;">
@@ -188,6 +257,14 @@
 
             <div class="drt-body" id="drt-body">
                 <button class="drt-btn-primary" id="drt-primary-btn">&#x25B6; Start Session</button>
+
+                <div class="drt-meter" id="drt-meter" style="display: none;">
+                    <button class="drt-mute-btn" id="drt-mute-btn" title="Mute microphone" aria-label="Mute microphone">
+                        <span class="drt-mute-ico" id="drt-mute-ico"></span>
+                    </button>
+                    <div class="drt-bars" id="drt-bars" aria-hidden="true"></div>
+                </div>
+
                 <div class="drt-hint" id="drt-hint" style="display: none;">You can make edits after the session ends</div>
 
                 <div class="drt-cards" id="drt-cards">${cardsHtml}
@@ -213,6 +290,7 @@
         const panel = document.getElementById('drt-panel');
         const header = document.getElementById('drt-header');
         const minimizeBtn = document.getElementById('drt-minimize');
+        const closeBtn = document.getElementById('drt-close');
         const primaryBtn = document.getElementById('drt-primary-btn');
         const endBtn = document.getElementById('drt-end-btn');
         const copyBtn = document.getElementById('drt-copy-btn');
@@ -248,6 +326,15 @@
 
         // ─── Minimize to badge ─────────────────────────────
         minimizeBtn.addEventListener('click', minimizePanel);
+
+        // ─── Close / dismiss entirely (only when no live session) ───
+        closeBtn.addEventListener('click', closePanel);
+
+        // ─── Mic meter + self-mute ─────────────────────────
+        buildMeterBars();
+        setMuteUi(false);
+        const muteBtn = document.getElementById('drt-mute-btn');
+        if (muteBtn) muteBtn.addEventListener('click', toggleMute);
 
         // ─── Primary button (state-dependent) ──────────────
         primaryBtn.addEventListener('click', () => {
@@ -459,6 +546,12 @@
         const mid = panelState === 'recording' || panelState === 'paused';
         if (hint) hint.style.display = mid ? '' : 'none';
         if (endBtn) endBtn.style.display = mid ? '' : 'none';
+        // Close (X) only when there's no live session — End the session first.
+        const closeBtn = document.getElementById('drt-close');
+        if (closeBtn) closeBtn.style.display = mid ? 'none' : '';
+        // Mic meter shows only during a live session (recording/paused).
+        const meter = document.getElementById('drt-meter');
+        if (meter) meter.style.display = mid ? '' : 'none';
         if (completeActions) completeActions.style.display = panelState === 'completed' ? '' : 'none';
 
         setCardsEditable(panelState === 'completed');
@@ -548,6 +641,8 @@
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         switch (message.type) {
             case 'session-started':
+                // A new session overrides a prior dismiss — bring the UI back.
+                userDismissed = false;
                 // Session may have been started from the popup on a page where
                 // the badge/panel don't exist yet (programmatic injection).
                 if (!document.getElementById('drt-badge')) injectBadge();
@@ -590,6 +685,17 @@
                 latestExtraction = message.extraction || latestExtraction;
                 renderExtraction();
                 if (isMinimized) pulseBadge(); // Subtle nudge, no auto-expand
+                break;
+
+            case 'mic-level':
+                if (typeof message.muted === 'boolean' && message.muted !== micMutedLocal) {
+                    setMuteUi(message.muted);
+                }
+                if (!isMinimized) pushMicLevel(message.muted ? 0 : (message.level || 0));
+                break;
+
+            case 'mute-state':
+                setMuteUi(!!message.muted);
                 break;
 
             case 'error':

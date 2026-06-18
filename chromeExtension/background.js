@@ -32,12 +32,14 @@ let lastServerHealthy = null;  // null = unknown, true/false = last health check
 let reconnectAttempts = 0;
 let reconnectTimer = null;
 let pendingAudioChunks = [];   // Buffered while the socket is down mid-session
+let sessionStartedAt = 0;      // Timestamp of last successful start (accidental-pause guard)
 
 // Mirrored to chrome.storage.session (survives SW termination, not browser restart)
 let session = {
     active: false,
     paused: false,
     pausedReason: null,        // Human-readable reason for auto-pause, if any
+    micMuted: false,           // Doctor self-muted the mic (session stays live)
     mode: 'ambient',           // 'dual' (Virtual visit) | 'ambient' (In person)
     appointmentId: null,
     doctorId: null,
@@ -186,6 +188,7 @@ async function buildStatus() {
         sessionActive: session.active,
         paused: session.paused,
         pausedReason: session.pausedReason,
+        micMuted: session.micMuted,
         mode: mode,
         appointmentId: session.appointmentId,
         doctor: doctor,
@@ -748,7 +751,7 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
         let streamId = null;
         if (session.mode === 'dual') {
             if (!targetTab || isRestrictedUrl(targetTab.url)) {
-                const err = new Error("This page's audio can't be captured (Chrome restricts pages like chrome://, the Web Store, and PDFs). Switch to Ambient mode to record with the microphone only.");
+                const err = new Error("This page's audio can't be captured (Chrome restricts pages like chrome://, the Web Store, and PDFs). Switch to In person mode to record with the microphone only.");
                 err.code = 'TAB_NOT_CAPTURABLE';
                 throw err;
             }
@@ -759,8 +762,8 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
                 // as "invoking the extension", so tabCapture is not granted.
                 // Tell the doctor the real fix instead of "switch to Ambient".
                 const e = new Error(fromPanel
-                    ? 'Chrome only allows tab-audio capture when the session is started from the extension itself. Click the drTranscribe toolbar icon and press Start there (or switch to Ambient mode in the popup).'
-                    : "Couldn't capture this tab's audio. Switch to Ambient mode, or open the consult page in a regular tab and try again.");
+                    ? 'Chrome only allows tab-audio capture when the session is started from the extension itself. Click the Scribe toolbar icon and press Start there (or switch to In person mode in the popup).'
+                    : "Couldn't capture this tab's audio. Switch to In person mode, or open the consult page in a regular tab and try again.");
                 e.code = fromPanel ? 'TAB_CAPTURE_NEEDS_POPUP' : 'TAB_NOT_CAPTURABLE';
                 throw e;
             }
@@ -780,6 +783,9 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
         });
         if (!captureResult || !captureResult.ok) {
             const name = captureResult && captureResult.name;
+            console.warn('[BG] Offscreen capture failed —',
+                'which:', captureResult && captureResult.which,
+                'error:', name, captureResult && captureResult.error);
             if (captureResult && captureResult.which === 'mic' &&
                 (name === 'NotAllowedError' || name === 'NotFoundError' || name === 'SecurityError')) {
                 // A permission-level failure means the stored grant flag is stale
@@ -801,7 +807,9 @@ async function startSession({ mode, tabId, appointmentId, freshAppointmentId, fr
 
         // 8. Session is live
         session.active = true;
+        sessionStartedAt = Date.now();
         session.paused = false;
+        session.micMuted = false;
         session.pausedReason = null;
         session.lostCapture = { mic: false, tab: false };
         latestExtraction = {};
@@ -902,9 +910,11 @@ async function stopSession() {
         session.active = false;
         session.paused = false;
         session.pausedReason = null;
+        session.micMuted = false;
         session.appointmentId = null;
         session.targetTabId = null;
         session.lostCapture = { mic: false, tab: false };
+        latestExtraction = {};   // Don't let the ended session's notes linger in the popup
         pendingAudioChunks = [];
         reconnectAttempts = 0;
         await clearPersistedSession();
@@ -1066,6 +1076,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true;
 
         case 'pause-session':
+            // Accidental-pause guard: after Start, the popup/panel primary button
+            // swaps Start→Pause in the same spot, so a double-click can land on
+            // Pause the instant the session goes live. Ignore a manual pause fired
+            // within a short window of start (auto-pauses pass a reason and bypass this).
+            if (session.active && !session.paused && Date.now() - sessionStartedAt < 1500) {
+                console.log('[BG] Ignored pause within 1.5s of start (accidental double-click guard)');
+                sendResponse({ ok: true });
+                return false;
+            }
             sendResponse(pauseSession());
             return false;
 
@@ -1073,6 +1092,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             resumeSession()
                 .then(result => sendResponse(result))
                 .catch(err => sendResponse({ ok: false, error: err.message }));
+            return true;
+
+        case 'toggle-mute':
+            (async () => {
+                if (!session.active) { sendResponse({ ok: false, muted: false }); return; }
+                session.micMuted = !session.micMuted;
+                await sendToOffscreen({ type: 'offscreen-set-mute', muted: session.micMuted }).catch(() => {});
+                persistSession();
+                sendToContentPanel({ type: 'mute-state', muted: session.micMuted });
+                broadcastStatus();
+                sendResponse({ ok: true, muted: session.micMuted });
+            })();
             return true;
 
         // ── Audio from offscreen ──
@@ -1085,6 +1116,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'capture-started':
             console.log('[BG] Offscreen capture started');
+            return false;
+
+        // Live mic level from offscreen → forward to the on-page panel waveform
+        case 'mic-level':
+            sendToContentPanel({ type: 'mic-level', level: message.level, muted: message.muted });
             return false;
 
         case 'capture-ended':

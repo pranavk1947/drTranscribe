@@ -115,6 +115,11 @@
     color: #212529;
 }
 
+.drt-btn-close:hover {
+    background: rgba(229, 72, 77, 0.10);
+    color: #E5484D;
+}
+
 /* ─── Error Banner ───────────────────────────────────────── */
 
 .drt-error {
@@ -188,6 +193,67 @@
 .drt-btn-primary:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+
+/* ─── Mic meter + self-mute ──────────────────────────────── */
+
+.drt-meter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: #F8FAF9;
+    border: 1px solid #E9ECEF;
+    border-radius: 10px;
+    flex-shrink: 0;
+}
+
+.drt-mute-btn {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1px solid #D7E5DC;
+    background: #ffffff;
+    color: #1B9E5A;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.drt-mute-btn:hover {
+    background: #F1F3F5;
+}
+
+.drt-meter-muted .drt-mute-btn {
+    background: rgba(229, 72, 77, 0.08);
+    border-color: rgba(229, 72, 77, 0.40);
+    color: #E5484D;
+}
+
+.drt-bars {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 30px;
+    overflow: hidden;
+}
+
+.drt-bars span {
+    flex: 1 1 auto;
+    min-width: 2px;
+    height: 12%;
+    background: #1B9E5A;
+    border-radius: 2px;
+    transition: height 0.09s linear;
+}
+
+.drt-meter-muted .drt-bars span {
+    background: #C8D6CE;
 }
 
 /* ─── Hint ───────────────────────────────────────────────── */
