@@ -16,7 +16,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/medlog.log'),
+        logging.FileHandler('logs/drtranscribe.log'),
         logging.StreamHandler()
     ]
 )
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 settings = load_settings()
 
 # Create FastAPI app
-app = FastAPI(title="MedLog", version="1.0.0")
+app = FastAPI(title="drTranscribe", version="2.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -101,7 +101,7 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     
-    logger.info("Starting MedLog server")
+    logger.info("Starting drTranscribe server")
     logger.info(f"Transcription provider: {settings.transcription.provider}")
     logger.info(f"Extraction provider: {settings.extraction.provider}")
     

@@ -1,15 +1,15 @@
-# LiveRx — GCP Setup & Deployment Makefile
+# drTranscribe — GCP Setup & Deployment Makefile
 # Usage: make setup-all   (one-time GCP setup)
 #        make deploy       (build + push + deploy)
 
 # ──────────────────────────────────────────────
-# Configuration
+# Configuration — update these for your GCP project
 # ──────────────────────────────────────────────
-PROJECT_ID       := loophealth-patient-dev
-REGION           := asia-south1
-SERVICE_NAME     := liverx
-AR_REPO          := liverx
-SA_NAME          := liverx-deployer
+PROJECT_ID       := your-gcp-project-id
+REGION           := your-region
+SERVICE_NAME     := drtranscribe
+AR_REPO          := drtranscribe
+SA_NAME          := drtranscribe-deployer
 SA_EMAIL         := $(SA_NAME)@$(PROJECT_ID).iam.gserviceaccount.com
 IMAGE            := $(REGION)-docker.pkg.dev/$(PROJECT_ID)/$(AR_REPO)/$(SERVICE_NAME)
 TAG              := $(shell git rev-parse --short HEAD)
@@ -21,7 +21,7 @@ TAG              := $(shell git rev-parse --short HEAD)
 .PHONY: setup-all setup-project setup-apis setup-registry setup-sa setup-sa-key
 
 setup-all: setup-project setup-apis setup-registry setup-sa setup-sa-key
-	@echo "\n✅ GCP setup complete. Add liverx-sa-key.json contents to GitHub secret LIVERX_GCP_SA_KEY"
+	@echo "\nGCP setup complete. Add the service account key JSON to your GitHub secret GCP_SERVICE_ACCOUNT_KEY"
 
 setup-project:
 	gcloud config set project $(PROJECT_ID)
@@ -36,12 +36,12 @@ setup-registry:
 	gcloud artifacts repositories create $(AR_REPO) \
 		--repository-format=docker \
 		--location=$(REGION) \
-		--description="LiveRx Docker images" \
+		--description="drTranscribe Docker images" \
 		|| echo "Registry already exists"
 
 setup-sa:
 	gcloud iam service-accounts create $(SA_NAME) \
-		--display-name="LiveRx CI/CD Deployer" \
+		--display-name="drTranscribe CI/CD Deployer" \
 		|| echo "Service account already exists"
 	gcloud projects add-iam-policy-binding $(PROJECT_ID) \
 		--member="serviceAccount:$(SA_EMAIL)" --role="roles/run.admin"
@@ -51,11 +51,11 @@ setup-sa:
 		--member="serviceAccount:$(SA_EMAIL)" --role="roles/iam.serviceAccountUser"
 
 setup-sa-key:
-	gcloud iam service-accounts keys create liverx-sa-key.json \
+	gcloud iam service-accounts keys create sa-key.json \
 		--iam-account=$(SA_EMAIL)
-	@echo "\n🔑 Key saved to liverx-sa-key.json"
-	@echo "   Paste its contents into GitHub secret: LIVERX_GCP_SA_KEY"
-	@echo "   Then delete the local file: rm liverx-sa-key.json"
+	@echo "\nKey saved to sa-key.json"
+	@echo "   Paste its contents into GitHub secret: GCP_SERVICE_ACCOUNT_KEY"
+	@echo "   Then delete the local file: rm sa-key.json"
 
 # ──────────────────────────────────────────────
 # Local Build & Deploy (manual)
@@ -78,7 +78,7 @@ deploy: build push
 		--image=$(IMAGE):$(TAG) \
 		--region=$(REGION) \
 		--platform=managed
-	@echo "\n✅ Deployed $(IMAGE):$(TAG)"
+	@echo "\nDeployed $(IMAGE):$(TAG)"
 	@gcloud run services describe $(SERVICE_NAME) --region=$(REGION) --format="value(status.url)"
 
 # ──────────────────────────────────────────────

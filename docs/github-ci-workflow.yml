@@ -7,12 +7,12 @@ on:
     branches: [main]
 
 env:
-  GCP_PROJECT_ID: loophealth-patient-dev
-  GCP_REGION: asia-south1
-  ARTIFACT_REGISTRY_HOST: asia-south1-docker.pkg.dev
-  ARTIFACT_REPOSITORY: cloud-run-source-deploy
-  SERVICE_NAME: loop-scribe
-  IMAGE: asia-south1-docker.pkg.dev/loophealth-patient-dev/cloud-run-source-deploy/loop-scribe
+  GCP_PROJECT_ID: your-gcp-project-id
+  GCP_REGION: your-region
+  ARTIFACT_REGISTRY_HOST: your-region-docker.pkg.dev
+  ARTIFACT_REPOSITORY: your-artifact-repo
+  SERVICE_NAME: drtranscribe
+  IMAGE: your-region-docker.pkg.dev/your-gcp-project-id/your-artifact-repo/drtranscribe
 
 jobs:
   # ──────────────────────────────────────────────
@@ -99,7 +99,7 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.DEV_HC_SERVICE_ACCOUNT_KEY }}
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -109,7 +109,7 @@ jobs:
         with:
           registry: ${{ env.ARTIFACT_REGISTRY_HOST }}
           username: _json_key
-          password: ${{ secrets.DEV_HC_SERVICE_ACCOUNT_KEY }}
+          password: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
       - name: Build Docker image
         run: docker build -t ${{ env.IMAGE }}:${{ github.sha }} -t ${{ env.IMAGE }}:latest .
@@ -130,7 +130,7 @@ jobs:
         run: |
           URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.GCP_REGION }} --format="value(status.url)")
           BRANCH=${GITHUB_REF#refs/heads/}
-          echo "## 🚀 ${BRANCH} → DEV" >> $GITHUB_STEP_SUMMARY
+          echo "## ${BRANCH} deployed" >> $GITHUB_STEP_SUMMARY
           echo "**Service:** ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "**URL:** $URL" >> $GITHUB_STEP_SUMMARY
           echo "**Image:** ${{ env.IMAGE }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

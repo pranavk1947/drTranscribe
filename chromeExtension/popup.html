@@ -9,37 +9,104 @@
     <div class="popup-header">
       <span class="popup-logo">drT</span>
       <span class="popup-title">drTranscribe</span>
+      <span class="popup-doctor" id="doctor-chip"></span>
     </div>
 
-    <div class="popup-section">
-      <label class="popup-label" for="server-url">Server URL</label>
+    <!-- Error banner (what happened + what to do next) -->
+    <div class="popup-error" id="error-banner" style="display: none;">
+      <span id="error-text"></span>
+      <button class="popup-btn popup-btn-small" id="error-action-btn" style="display: none;"></button>
+    </div>
+
+    <!-- One-time microphone setup. Mic access is granted to the extension
+         origin and persists, so this shows only until the doctor grants it
+         once; after that it never appears again. -->
+    <div class="popup-mic-banner" id="mic-banner" style="display: none;">
+      <span class="popup-mic-text">One-time setup: enable the microphone so consults can be recorded.</span>
+      <button class="popup-btn popup-btn-small" id="mic-enable-btn">Enable microphone</button>
+    </div>
+
+    <!-- Registration prompt (unregistered, form collapsed) — registration is
+         required before a session can start -->
+    <div class="popup-section" id="register-nudge" style="display: none;">
+      <button class="popup-btn popup-btn-register" id="register-now-btn">Register Now</button>
+      <div class="popup-hint">Register to start your first consult — session controls unlock right after.</div>
+    </div>
+
+    <!-- Inline registration form -->
+    <div class="popup-section popup-reg-form" id="register-form" style="display: none;">
+      <div class="popup-label">Doctor Registration</div>
+      <input type="text" id="reg-name" class="popup-input popup-input-full" placeholder="Full name" />
+      <div class="popup-field-error" id="reg-name-error"></div>
+      <input type="tel" id="reg-phone" class="popup-input popup-input-full" placeholder="Mobile (10-digit or +91...)" />
+      <div class="popup-field-error" id="reg-phone-error"></div>
+      <input type="email" id="reg-email" class="popup-input popup-input-full" placeholder="Email" />
+      <div class="popup-field-error" id="reg-email-error"></div>
+      <input type="text" id="reg-regno" class="popup-input popup-input-full" placeholder="Medical registration number (optional)" />
+      <div class="popup-field-error" id="reg-regno-error"></div>
+      <input type="text" id="reg-clinic" class="popup-input popup-input-full" placeholder="Clinic name (optional)" />
+      <div class="popup-field-error" id="reg-clinic-error"></div>
       <div class="popup-input-row">
-        <input type="text" id="server-url" class="popup-input" placeholder="http://localhost:8000" />
-        <button id="save-btn" class="popup-btn">Save</button>
+        <button class="popup-btn" id="reg-submit-btn">Register</button>
+        <button class="popup-btn popup-btn-ghost" id="reg-cancel-btn">Cancel</button>
+      </div>
+      <a href="#" class="popup-link" id="recover-link">Already registered? Recover by email</a>
+      <div class="popup-input-row" id="recover-row" style="display: none;">
+        <input type="email" id="recover-email" class="popup-input" placeholder="Registered email" />
+        <button class="popup-btn popup-btn-small" id="recover-btn">Recover</button>
+      </div>
+      <div class="popup-field-error" id="recover-error"></div>
+    </div>
+
+    <!-- Mode selector -->
+    <div class="popup-section">
+      <div class="popup-label">Consult Mode</div>
+      <div class="popup-mode-toggle" id="mode-toggle" role="tablist">
+        <button class="popup-mode-btn" data-mode="dual" id="mode-dual" role="tab">Virtual visit</button>
+        <button class="popup-mode-btn" data-mode="ambient" id="mode-ambient" role="tab">In person</button>
+      </div>
+      <div class="popup-hint popup-warn" id="dual-warning" style="display: none;"></div>
+    </div>
+
+    <!-- Session controls -->
+    <div class="popup-section">
+      <div class="popup-controls">
+        <button class="popup-btn popup-btn-start" id="start-btn">&#x25B6; Start</button>
+        <button class="popup-btn popup-btn-pause" id="pause-btn" style="display: none;">&#x23F8; Pause</button>
+        <button class="popup-btn popup-btn-resume" id="resume-btn" style="display: none;">&#x25B6; Resume</button>
+        <button class="popup-btn popup-btn-stop" id="stop-btn" style="display: none;">&#x25A0; Stop</button>
+      </div>
+      <div class="popup-session-line" id="session-line"></div>
+      <div class="popup-hint popup-warn" id="panel-note" style="display: none;"></div>
+    </div>
+
+    <!-- Latest extraction -->
+    <div class="popup-section" id="extraction-section" style="display: none;">
+      <div class="popup-label">Live Extraction</div>
+      <div class="popup-cards">
+        <div class="popup-card"><div class="popup-card-title">Chief Complaint</div><div class="popup-card-body popup-card-empty" id="ext-chief_complaint">—</div></div>
+        <div class="popup-card"><div class="popup-card-title">Diagnosis</div><div class="popup-card-body popup-card-empty" id="ext-diagnosis">—</div></div>
+        <div class="popup-card"><div class="popup-card-title">Medicine</div><div class="popup-card-body popup-card-empty" id="ext-medicine">—</div></div>
+        <div class="popup-card"><div class="popup-card-title">Advice</div><div class="popup-card-body popup-card-empty" id="ext-advice">—</div></div>
+        <div class="popup-card"><div class="popup-card-title">Next Steps</div><div class="popup-card-body popup-card-empty" id="ext-next_steps">—</div></div>
       </div>
     </div>
 
-    <div class="popup-section">
-      <label class="popup-label" for="doctor-name">Doctor Name</label>
-      <input type="text" id="doctor-name" class="popup-input popup-input-full" placeholder="Dr. Name" />
-    </div>
-
-    <div class="popup-section">
-      <label class="popup-label" for="clinic-name">Clinic Name (optional)</label>
-      <input type="text" id="clinic-name" class="popup-input popup-input-full" placeholder="Clinic / Hospital" />
-    </div>
-
-    <div class="popup-section">
-      <label class="popup-label">Server Status</label>
-      <div class="popup-status" id="status">
-        <span class="popup-status-dot" id="status-dot"></span>
-        <span id="status-text">Checking...</span>
+    <!-- Settings -->
+    <details class="popup-settings">
+      <summary>Settings</summary>
+      <div class="popup-section">
+        <label class="popup-label" for="server-url">Server URL</label>
+        <div class="popup-input-row">
+          <input type="text" id="server-url" class="popup-input" placeholder="http://localhost:8080" />
+          <button id="save-btn" class="popup-btn popup-btn-small">Save</button>
+        </div>
+        <div class="popup-status" id="status">
+          <span class="popup-status-dot" id="status-dot"></span>
+          <span id="status-text">Checking...</span>
+        </div>
       </div>
-    </div>
-
-    <div class="popup-footer">
-      <span id="session-status"></span>
-    </div>
+    </details>
   </div>
 
   <script src="popup.js"></script>

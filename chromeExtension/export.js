@@ -7,7 +7,8 @@
  * - exportClipboard(patient)
  * - exportTXT(patient)
  *
- * Reads edited text from textareas (drt-edit-*) in the post-session panel.
+ * Reads edited text from the post-session panel: the contenteditable card
+ * bodies (drt-field-*) in the Loop panel, or legacy textareas (drt-edit-*).
  */
 (function () {
     'use strict';
@@ -24,8 +25,16 @@
     function getEditedData() {
         const data = {};
         for (const key of FIELD_KEYS) {
-            const el = document.getElementById('drt-edit-' + key);
-            data[key] = el ? el.value.trim() : '';
+            const el = document.getElementById('drt-edit-' + key) ||
+                document.getElementById('drt-field-' + key);
+            if (!el) {
+                data[key] = '';
+                continue;
+            }
+            const raw = (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT')
+                ? el.value
+                : (el.innerText || el.textContent || '');
+            data[key] = (raw || '').trim();
         }
         return data;
     }

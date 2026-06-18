@@ -9,7 +9,9 @@
  *
  * Message Protocol:
  * - Receive: { type: 'configure', sampleRate, chunkDuration }
+ * - Receive: { type: 'flush' }  -> emits any partial chunk, then replies
  * - Send: { type: 'audio-chunk', samples: Float32Array, sampleRate }
+ * - Send: { type: 'flush-done' }  (always sent after a flush request)
  */
 class AudioCaptureProcessor extends AudioWorkletProcessor {
     constructor() {
@@ -101,8 +103,10 @@ class AudioCaptureProcessor extends AudioWorkletProcessor {
             // Edge case: samples overflow buffer (shouldn't happen with 128-sample frames)
             console.warn(`[AudioWorklet] Buffer overflow: ${inputLength} samples, ${remainingSpace} space remaining`);
 
-            // Fill remaining buffer
+            // Fill remaining buffer (account for the just-copied samples
+            // BEFORE sending, or sendChunk truncates them — P2-8)
             this.buffer.set(inputChannel.subarray(0, remainingSpace), this.bufferIndex);
+            this.bufferIndex = this.bufferSize;
             this.sendChunk();
 
             // Start new buffer with overflow samples
@@ -143,6 +147,8 @@ class AudioCaptureProcessor extends AudioWorkletProcessor {
      *
      * Called when recording stops mid-buffer.
      * Ensures no audio is lost (critical for medical records).
+     * Always replies 'flush-done' so the offscreen document can await the
+     * flush before tearing the pipeline down (P1-4).
      */
     flush() {
         if (this.bufferIndex > 0) {
@@ -150,6 +156,7 @@ class AudioCaptureProcessor extends AudioWorkletProcessor {
             this.sendChunk();
             this.bufferIndex = 0;
         }
+        this.port.postMessage({ type: 'flush-done' });
     }
 }
 

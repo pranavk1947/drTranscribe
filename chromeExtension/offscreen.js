@@ -1,27 +1,57 @@
 /**
- * Offscreen Document - Tab audio capture and encoding
+ * Offscreen Document - All audio capture and encoding for drTranscribe
  *
  * Handles:
- * 1. Tab audio capture via chrome.tabCapture streamId
- * 2. Re-routing tab audio to speakers (tabCapture mutes by default)
- * 3. WAV encoding via AudioWorklet + WavEncoder
- * 4. Sending base64 audio chunks to background service worker
+ * 1. Microphone capture via getUserMedia (doctor / ambient audio)
+ * 2. Tab audio capture via chrome.tabCapture streamId (patient audio, dual mode)
+ * 3. Re-routing tab audio to speakers (tabCapture mutes by default)
+ * 4. WAV encoding via AudioWorklet + WavEncoder
+ * 5. Sending base64 audio chunks to background service worker
  *
- * Note: Mic capture is handled by the content script (content.js),
- * which runs in the page context where mic permission is already granted.
+ * Modes:
+ * - "ambient": mic only, chunks tagged source: "ambient"
+ * - "dual":    mic (source: "mic") + tab audio (source: "tab")
+ *
+ * Messages from background (all carry target: "offscreen"):
+ * - offscreen-start-capture { mode, streamId?, audioConfig }
+ * - offscreen-stop-capture
+ * - offscreen-pause-capture / offscreen-resume-capture
+ * - offscreen-restart-tab { streamId }   (re-capture after tab loss)
+ * - offscreen-restart-mic                (re-capture after mic loss)
+ *
+ * Messages to background:
+ * - audio-chunk { audio_data, source }
+ * - capture-started
+ * - capture-error { which: 'mic'|'tab', error }   (chunk encoding failed mid-session)
+ * - capture-ended { which: 'mic'|'tab' }   (track ended mid-session)
+ *
+ * Stop ordering (P1-4): offscreen-stop-capture flushes the worklets
+ * (request/response via 'flush' → 'flush-done'), waits for in-flight chunk
+ * encodes to reach the background, and only then tears down + responds —
+ * so the final partial chunk is sent before background emits stop_session.
  */
 
-let audioContext = null;
-let tabStream = null;
-let workletNode = null;
+let currentMode = null;       // 'ambient' | 'dual'
 let isCapturing = false;
+let isPaused = false;
+
+// Audio config defaults (overridden by backend config)
+let targetSampleRate = 16000;
+let chunkDuration = 5;
+
+// Mic pipeline
+let micStream = null;
+let micContext = null;
+let micWorklet = null;
+
+// Tab pipeline
+let tabStream = null;
+let tabContext = null;
+let tabWorklet = null;
 let echoAudioElement = null;
 
 /**
  * Check if audio samples contain speech-level energy.
- * @param {Float32Array} samples - Audio samples in [-1.0, 1.0] range
- * @param {number} threshold - RMS threshold (0.01 = conservative for speech)
- * @returns {boolean} true if speech detected
  */
 function hasSpeechEnergy(samples, threshold = 0.01) {
     let sumSq = 0;
@@ -32,118 +62,8 @@ function hasSpeechEnergy(samples, threshold = 0.01) {
     return rms >= threshold;
 }
 
-// Audio config defaults (overridden by backend config)
-let targetSampleRate = 16000; // What the backend expects
-let chunkDuration = 7;
-
-/**
- * Start tab audio capture
- */
-async function startCapture(streamId, audioConfig) {
-    if (isCapturing) {
-        console.warn('[Offscreen] Already capturing');
-        return;
-    }
-
-    console.log('[Offscreen] Starting capture with streamId:', streamId);
-
-    // Apply audio config if provided
-    if (audioConfig) {
-        targetSampleRate = audioConfig.sample_rate || 16000;
-        chunkDuration = audioConfig.chunk_duration_seconds || 7;
-    }
-
-    try {
-        // 1. Get tab audio stream using the streamId from tabCapture
-        tabStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                mandatory: {
-                    chromeMediaSource: 'tab',
-                    chromeMediaSourceId: streamId
-                }
-            },
-            video: false
-        });
-        console.log('[Offscreen] Tab audio stream acquired');
-
-        // 2. Create AudioContext at NATIVE sample rate (usually 48000Hz)
-        //    IMPORTANT: Forcing 16kHz causes Chrome's MediaStreamSource to
-        //    produce silence. We capture at native rate and downsample later.
-        audioContext = new AudioContext();
-        const nativeSampleRate = audioContext.sampleRate;
-        console.log(`[Offscreen] AudioContext created at ${nativeSampleRate}Hz (native), target: ${targetSampleRate}Hz`);
-
-        // 3. Create source node for tab audio
-        const tabSource = audioContext.createMediaStreamSource(tabStream);
-
-        // 4. CRITICAL: Re-route tab audio to speakers via <audio> element
-        //    tabCapture mutes the tab audio by default. We route through a
-        //    MediaStreamDestination -> <audio> element (NOT audioContext.destination)
-        //    so Chrome's AEC can correlate playback with mic input and cancel echo.
-        const speakerDest = audioContext.createMediaStreamDestination();
-        tabSource.connect(speakerDest);
-
-        echoAudioElement = document.createElement('audio');
-        echoAudioElement.srcObject = speakerDest.stream;
-        echoAudioElement.autoplay = true;
-        document.body.appendChild(echoAudioElement);
-        console.log('[Offscreen] Tab audio routed to speakers via <audio> element (AEC-compatible)');
-
-        // 5. Anti-alias filter: remove frequencies above target Nyquist (8kHz)
-        //    before downsampling from 48kHz to 16kHz. Prevents aliasing artifacts
-        //    where 8-24kHz folds back into the speech band.
-        const antiAliasFilter = audioContext.createBiquadFilter();
-        antiAliasFilter.type = 'lowpass';
-        antiAliasFilter.frequency.value = 7500;
-        antiAliasFilter.Q.value = 0.707; // Butterworth — flat passband
-
-        // 6. Load AudioWorklet processor
-        await audioContext.audioWorklet.addModule('audio-worklet-processor.js');
-        workletNode = new AudioWorkletNode(audioContext, 'audio-capture-processor');
-
-        // Configure the worklet with NATIVE sample rate for buffering
-        workletNode.port.postMessage({
-            type: 'configure',
-            sampleRate: nativeSampleRate,
-            chunkDuration: chunkDuration
-        });
-
-        // Handle audio chunks from worklet
-        workletNode.port.onmessage = (event) => {
-            if (event.data.type === 'audio-chunk') {
-                handleAudioChunk(event.data.samples, event.data.sampleRate);
-            }
-        };
-
-        // Connect: tabSource -> antiAliasFilter -> workletNode
-        tabSource.connect(antiAliasFilter);
-        antiAliasFilter.connect(workletNode);
-        // Worklet needs to connect to destination to keep processing
-        workletNode.connect(audioContext.destination);
-
-        isCapturing = true;
-        console.log('[Offscreen] Audio capture pipeline active');
-
-        // Notify background
-        chrome.runtime.sendMessage({ type: 'capture-started' });
-
-    } catch (err) {
-        console.error('[Offscreen] Failed to start capture:', err);
-        chrome.runtime.sendMessage({
-            type: 'capture-error',
-            error: err.message
-        });
-        stopCapture();
-    }
-}
-
 /**
  * Downsample audio from native rate to target rate using linear interpolation
- *
- * @param {Float32Array} samples - Audio samples at native rate
- * @param {number} fromRate - Source sample rate (e.g., 48000)
- * @param {number} toRate - Target sample rate (e.g., 16000)
- * @returns {Float32Array} Downsampled audio
  */
 function downsample(samples, fromRate, toRate) {
     if (fromRate === toRate) return samples;
@@ -163,91 +83,362 @@ function downsample(samples, fromRate, toRate) {
     return result;
 }
 
+// Promises for chunk encodes still in flight (FileReader is async) — awaited
+// during stopCapture so the final partial chunk reaches the background
+// before the stop ack (P1-4).
+let inFlightChunkSends = new Set();
+
 /**
- * Handle audio chunk from AudioWorklet - downsample, encode to WAV, send to background
+ * Handle an audio chunk from a worklet: downsample, VAD, WAV-encode,
+ * base64, send to background with the given source label.
  */
-function handleAudioChunk(samples, nativeSr) {
+function handleAudioChunk(samples, nativeRate, source) {
+    if (isPaused) return; // Drop chunks while session is paused
     try {
-        // Downsample from native rate (48kHz) to target rate (16kHz)
-        const downsampled = downsample(samples, nativeSr, targetSampleRate);
+        const downsampled = downsample(samples, nativeRate, targetSampleRate);
 
         // Voice Activity Detection: skip silent/noise-only chunks
-        if (!hasSpeechEnergy(downsampled)) {
-            console.log('[Offscreen] Silent chunk, skipping');
-            return;
-        }
+        if (!hasSpeechEnergy(downsampled)) return;
 
-        // Encode to WAV at target sample rate
         const wavBlob = WavEncoder.encode(downsampled, targetSampleRate, 1);
 
-        // Convert Blob to base64
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64Data = reader.result.split(',')[1];
-            // Send to background service worker (source: tab = patient/remote audio)
-            chrome.runtime.sendMessage({
-                type: 'audio-chunk',
-                audio_data: base64Data,
-                source: 'tab'
-            });
-            console.log(`[Offscreen] Sent audio chunk: ${samples.length} native samples -> ${downsampled.length} @${targetSampleRate}Hz, ${base64Data.length} chars base64`);
-        };
-        reader.onerror = (err) => {
-            console.error('[Offscreen] FileReader error:', err);
-        };
-        reader.readAsDataURL(wavBlob);
+        const sendPromise = new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64Data = reader.result.split(',')[1];
+                Promise.resolve(chrome.runtime.sendMessage({
+                    type: 'audio-chunk',
+                    audio_data: base64Data,
+                    source: source
+                })).catch(() => {}).then(resolve);
+            };
+            reader.onerror = (err) => {
+                console.error('[Offscreen] FileReader error:', err);
+                resolve();
+            };
+            reader.readAsDataURL(wavBlob);
+        });
+        inFlightChunkSends.add(sendPromise);
+        sendPromise.then(() => inFlightChunkSends.delete(sendPromise));
     } catch (err) {
         console.error('[Offscreen] Error encoding audio chunk:', err);
+        // Non-track pipeline failure — let the background surface it instead
+        // of losing audio silently (P2-1).
+        chrome.runtime.sendMessage({
+            type: 'capture-error',
+            which: source === 'tab' ? 'tab' : 'mic',
+            error: err.message
+        }).catch(() => {});
     }
 }
 
 /**
- * Stop audio capture and clean up resources
+ * Build a capture pipeline for a MediaStream:
+ * source -> anti-alias lowpass -> AudioWorklet -> destination.
+ * Returns { context, worklet }.
  */
-function stopCapture() {
-    console.log('[Offscreen] Stopping capture');
+async function buildPipeline(stream, sourceLabel) {
+    // AudioContext at NATIVE sample rate (forcing 16kHz produces silence
+    // from MediaStreamSource in Chrome) — downsample later.
+    const context = new AudioContext();
+    const nativeRate = context.sampleRate;
+    console.log(`[Offscreen] ${sourceLabel} AudioContext at ${nativeRate}Hz, target ${targetSampleRate}Hz`);
 
-    // Flush remaining audio from worklet
-    if (workletNode) {
-        workletNode.port.postMessage({ type: 'flush' });
-        workletNode.disconnect();
-        workletNode = null;
+    const source = context.createMediaStreamSource(stream);
+
+    // Anti-alias filter: remove frequencies above target Nyquist (8kHz)
+    // before downsampling. Prevents aliasing artifacts in the speech band.
+    const antiAliasFilter = context.createBiquadFilter();
+    antiAliasFilter.type = 'lowpass';
+    antiAliasFilter.frequency.value = 7500;
+    antiAliasFilter.Q.value = 0.707; // Butterworth — flat passband
+
+    await context.audioWorklet.addModule('audio-worklet-processor.js');
+    const worklet = new AudioWorkletNode(context, 'audio-capture-processor');
+
+    worklet.port.postMessage({
+        type: 'configure',
+        sampleRate: nativeRate,
+        chunkDuration: chunkDuration
+    });
+
+    worklet.port.onmessage = (event) => {
+        if (event.data.type === 'audio-chunk') {
+            handleAudioChunk(event.data.samples, event.data.sampleRate, sourceLabel);
+        }
+    };
+
+    source.connect(antiAliasFilter);
+    antiAliasFilter.connect(worklet);
+    // Worklet must connect to destination to keep processing
+    worklet.connect(context.destination);
+
+    return { context, worklet, source };
+}
+
+/**
+ * Notify background that a track ended mid-session (tab closed/navigated,
+ * mic unplugged). Background auto-pauses the session.
+ */
+function notifyCaptureEnded(which) {
+    if (!isCapturing) return; // Expected during stopCapture cleanup
+    console.warn(`[Offscreen] ${which} track ended unexpectedly`);
+    chrome.runtime.sendMessage({ type: 'capture-ended', which: which }).catch(() => {});
+}
+
+/**
+ * Start microphone capture. Source label depends on mode:
+ * ambient -> "ambient", dual -> "mic".
+ * Returns { ok } or { ok: false, which: 'mic', name, error }.
+ */
+async function startMicCapture() {
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+    } catch (err) {
+        console.warn('[Offscreen] Mic getUserMedia failed:', err.name, err.message);
+        return { ok: false, which: 'mic', name: err.name, error: err.message };
     }
 
-    // Remove echo cancellation audio element
+    const micSource = currentMode === 'ambient' ? 'ambient' : 'mic';
+    const pipeline = await buildPipeline(micStream, micSource);
+    micContext = pipeline.context;
+    micWorklet = pipeline.worklet;
+
+    const track = micStream.getAudioTracks()[0];
+    if (track) track.onended = () => notifyCaptureEnded('mic');
+
+    console.log(`[Offscreen] Mic capture started (source: ${micSource})`);
+    return { ok: true };
+}
+
+/**
+ * Start tab audio capture from a tabCapture streamId (dual mode only).
+ * Also re-routes tab audio to speakers, since tabCapture mutes the tab.
+ * Returns { ok } or { ok: false, which: 'tab', name, error }.
+ */
+async function startTabCapture(streamId) {
+    try {
+        tabStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                mandatory: {
+                    chromeMediaSource: 'tab',
+                    chromeMediaSourceId: streamId
+                }
+            },
+            video: false
+        });
+    } catch (err) {
+        console.warn('[Offscreen] Tab getUserMedia failed:', err.name, err.message);
+        return { ok: false, which: 'tab', name: err.name, error: err.message };
+    }
+
+    const pipeline = await buildPipeline(tabStream, 'tab');
+    tabContext = pipeline.context;
+    tabWorklet = pipeline.worklet;
+
+    // CRITICAL: Re-route tab audio to speakers via <audio> element.
+    // tabCapture mutes the tab by default. Routing through a
+    // MediaStreamDestination -> <audio> element (NOT context.destination)
+    // lets Chrome's AEC correlate playback with mic input and cancel echo.
+    const speakerDest = tabContext.createMediaStreamDestination();
+    pipeline.source.connect(speakerDest);
+
+    echoAudioElement = document.createElement('audio');
+    echoAudioElement.srcObject = speakerDest.stream;
+    echoAudioElement.autoplay = true;
+    document.body.appendChild(echoAudioElement);
+
+    const track = tabStream.getAudioTracks()[0];
+    if (track) track.onended = () => notifyCaptureEnded('tab');
+
+    console.log('[Offscreen] Tab capture started (audio re-routed to speakers)');
+    return { ok: true };
+}
+
+/**
+ * Start capture for a session.
+ */
+async function startCapture(mode, streamId, audioConfig) {
+    if (isCapturing) {
+        console.warn('[Offscreen] Already capturing');
+        return { ok: true };
+    }
+
+    currentMode = mode;
+    if (audioConfig) {
+        targetSampleRate = audioConfig.sample_rate || 16000;
+        chunkDuration = audioConfig.chunk_duration_seconds || 5;
+    }
+
+    // 1. Mic (required in both modes)
+    const micResult = await startMicCapture();
+    if (!micResult.ok) {
+        await stopCapture();
+        return micResult;
+    }
+
+    // 2. Tab audio (dual mode only)
+    if (mode === 'dual' && streamId) {
+        const tabResult = await startTabCapture(streamId);
+        if (!tabResult.ok) {
+            await stopCapture();
+            return tabResult;
+        }
+    }
+
+    isCapturing = true;
+    isPaused = false;
+    chrome.runtime.sendMessage({ type: 'capture-started' }).catch(() => {});
+    console.log(`[Offscreen] Capture active (mode: ${mode})`);
+    return { ok: true };
+}
+
+/**
+ * Ask a worklet to flush its partial buffer and wait for the 'flush-done'
+ * reply (capped) so the chunk is handed to handleAudioChunk before the
+ * pipeline is torn down (P1-4).
+ */
+function flushWorklet(worklet, timeoutMs = 250) {
+    return new Promise((resolve) => {
+        if (!worklet) return resolve();
+        const prevHandler = worklet.port.onmessage;
+        const timer = setTimeout(() => {
+            worklet.port.onmessage = prevHandler;
+            resolve();
+        }, timeoutMs);
+        worklet.port.onmessage = (event) => {
+            if (event.data.type === 'flush-done') {
+                clearTimeout(timer);
+                worklet.port.onmessage = prevHandler;
+                resolve();
+            } else if (prevHandler) {
+                prevHandler(event); // e.g. the flushed audio-chunk itself
+            }
+        };
+        worklet.port.postMessage({ type: 'flush' });
+    });
+}
+
+function stopMicPipeline() {
+    if (micWorklet) {
+        // Flushing is handled (awaited) in stopCapture; a fire-and-forget
+        // flush here would race teardown / emit a stray post-stop chunk.
+        micWorklet.disconnect();
+        micWorklet = null;
+    }
+    if (micStream) {
+        micStream.getAudioTracks().forEach(t => { t.onended = null; });
+        micStream.getTracks().forEach(t => t.stop());
+        micStream = null;
+    }
+    if (micContext) {
+        micContext.close().catch(() => {});
+        micContext = null;
+    }
+}
+
+function stopTabPipeline() {
+    if (tabWorklet) {
+        tabWorklet.disconnect();
+        tabWorklet = null;
+    }
     if (echoAudioElement) {
         echoAudioElement.pause();
         echoAudioElement.srcObject = null;
         echoAudioElement.remove();
         echoAudioElement = null;
     }
-
-    // Stop tab stream tracks
     if (tabStream) {
-        tabStream.getTracks().forEach(track => track.stop());
+        tabStream.getAudioTracks().forEach(t => { t.onended = null; });
+        tabStream.getTracks().forEach(t => t.stop());
         tabStream = null;
     }
-
-    // Close audio context
-    if (audioContext) {
-        audioContext.close().catch(() => {});
-        audioContext = null;
+    if (tabContext) {
+        tabContext.close().catch(() => {});
+        tabContext = null;
     }
+}
 
-    isCapturing = false;
-    console.log('[Offscreen] Capture stopped and cleaned up');
+/**
+ * Stop all capture and clean up resources.
+ *
+ * P1-4: before tearing the pipelines down, flush the worklets' partial
+ * buffers and wait for any in-flight chunk encodes to be forwarded to the
+ * background — so the doctor's last utterance is sent before stop_session.
+ */
+async function stopCapture() {
+    console.log('[Offscreen] Stopping capture');
+    isCapturing = false; // Set first so onended handlers don't fire notifications
+
+    // 1. Flush partial buffers (request/response, ~250ms cap per worklet)
+    await Promise.all([flushWorklet(micWorklet), flushWorklet(tabWorklet)]);
+
+    // 2. Wait for in-flight encodes to reach the background (capped)
+    await Promise.race([
+        Promise.all([...inFlightChunkSends]),
+        new Promise((r) => setTimeout(r, 500))
+    ]);
+
+    stopMicPipeline();
+    stopTabPipeline();
+    isPaused = false;
+    currentMode = null;
 }
 
 /**
  * Listen for messages from background service worker
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'start-capture') {
-        startCapture(message.streamId, message.audioConfig);
-        sendResponse({ ok: true });
-    } else if (message.type === 'stop-capture') {
-        stopCapture();
-        sendResponse({ ok: true });
+    if (message.target !== 'offscreen') return false;
+
+    switch (message.type) {
+        case 'offscreen-start-capture':
+            startCapture(message.mode, message.streamId, message.audioConfig)
+                .then(sendResponse)
+                .catch(err => sendResponse({ ok: false, error: err.message }));
+            return true; // async response
+
+        case 'offscreen-stop-capture':
+            // Async: flushes the final partial chunk to the background before
+            // acking, so background sends it ahead of stop_session (P1-4)
+            stopCapture()
+                .then(() => sendResponse({ ok: true }))
+                .catch(err => sendResponse({ ok: false, error: err.message }));
+            return true; // async response
+
+        case 'offscreen-pause-capture':
+            isPaused = true;
+            console.log('[Offscreen] Paused (chunks will be dropped)');
+            sendResponse({ ok: true });
+            return false;
+
+        case 'offscreen-resume-capture':
+            isPaused = false;
+            console.log('[Offscreen] Resumed');
+            sendResponse({ ok: true });
+            return false;
+
+        case 'offscreen-restart-tab':
+            // Re-capture tab audio after the original tab was closed/navigated
+            stopTabPipeline();
+            startTabCapture(message.streamId)
+                .then(sendResponse)
+                .catch(err => sendResponse({ ok: false, which: 'tab', error: err.message }));
+            return true; // async response
+
+        case 'offscreen-restart-mic':
+            // Re-capture mic after device loss
+            stopMicPipeline();
+            startMicCapture()
+                .then(sendResponse)
+                .catch(err => sendResponse({ ok: false, which: 'mic', error: err.message }));
+            return true; // async response
     }
     return false;
 });
