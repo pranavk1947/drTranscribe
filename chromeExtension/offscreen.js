@@ -50,6 +50,11 @@ let tabContext = null;
 let tabWorklet = null;
 let echoAudioElement = null;
 
+// Mic level meter + self-mute (mic only; tab/patient audio is unaffected)
+let micMuted = false;
+let micAnalyser = null;
+let micLevelTimer = null;
+
 /**
  * Check if audio samples contain speech-level energy.
  */
@@ -213,8 +218,54 @@ async function startMicCapture() {
     const track = micStream.getAudioTracks()[0];
     if (track) track.onended = () => notifyCaptureEnded('mic');
 
+    // Fresh mic stream starts unmuted; tap it with an analyser to drive the
+    // panel's live level meter.
+    micMuted = false;
+    if (track) track.enabled = true;
+    startMicMeter(pipeline.context, pipeline.source);
+
     console.log(`[Offscreen] Mic capture started (source: ${micSource})`);
     return { ok: true };
+}
+
+/**
+ * Tap the mic source with an AnalyserNode and stream a normalized 0..1 level
+ * to the background ~12x/sec for the panel's waveform. Sends 0 while paused or
+ * muted so the bars go flat.
+ */
+function startMicMeter(context, source) {
+    stopMicMeter();
+    try {
+        micAnalyser = context.createAnalyser();
+        micAnalyser.fftSize = 256;
+        micAnalyser.smoothingTimeConstant = 0.4;
+        source.connect(micAnalyser);
+    } catch (err) {
+        console.warn('[Offscreen] Could not create mic analyser:', err.message);
+        micAnalyser = null;
+        return;
+    }
+    const buf = new Uint8Array(micAnalyser.fftSize);
+    micLevelTimer = setInterval(() => {
+        if (!micAnalyser) return;
+        let level = 0;
+        if (isCapturing && !isPaused && !micMuted) {
+            micAnalyser.getByteTimeDomainData(buf);
+            let sumSq = 0;
+            for (let i = 0; i < buf.length; i++) {
+                const v = (buf[i] - 128) / 128;
+                sumSq += v * v;
+            }
+            const rms = Math.sqrt(sumSq / buf.length);
+            level = Math.min(1, rms * 3.2); // gentle gain so normal speech fills the bars
+        }
+        chrome.runtime.sendMessage({ type: 'mic-level', level, muted: micMuted }).catch(() => {});
+    }, 80);
+}
+
+function stopMicMeter() {
+    if (micLevelTimer) { clearInterval(micLevelTimer); micLevelTimer = null; }
+    if (micAnalyser) { try { micAnalyser.disconnect(); } catch {} micAnalyser = null; }
 }
 
 /**
@@ -326,6 +377,7 @@ function flushWorklet(worklet, timeoutMs = 250) {
 }
 
 function stopMicPipeline() {
+    stopMicMeter();
     if (micWorklet) {
         // Flushing is handled (awaited) in stopCapture; a fire-and-forget
         // flush here would race teardown / emit a stray post-stop chunk.
@@ -411,6 +463,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 .then(() => sendResponse({ ok: true }))
                 .catch(err => sendResponse({ ok: false, error: err.message }));
             return true; // async response
+
+        case 'offscreen-set-mute': {
+            // Self-mute: disable only the mic track (tab/patient audio keeps
+            // flowing in dual mode). Disabled track emits silence, which the
+            // backend drops, so no muted audio is transcribed.
+            micMuted = !!message.muted;
+            const t = micStream && micStream.getAudioTracks()[0];
+            if (t) t.enabled = !micMuted;
+            console.log('[Offscreen] Mic', micMuted ? 'muted' : 'unmuted');
+            sendResponse({ ok: true, muted: micMuted });
+            return false;
+        }
 
         case 'offscreen-pause-capture':
             isPaused = true;

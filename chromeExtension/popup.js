@@ -492,8 +492,14 @@ async function doStart(freshAppointmentId) {
     });
 
     if (result && result.ok) {
-        // status-update broadcast re-renders; do a refresh just in case
-        refreshStatus();
+        // The on-page floating panel is now the live control surface. Close this
+        // popup so the two don't show at once — EXCEPT on restricted pages
+        // (chrome://, New Tab) where no panel can render and the popup IS the UI.
+        await refreshStatus();
+        if (currentStatus && currentStatus.sessionActive && !currentStatus.panelUnavailable) {
+            window.close();
+            return;
+        }
         return;
     }
 
@@ -583,10 +589,47 @@ function checkHealth() {
     });
 }
 
-saveBtn.addEventListener('click', () => {
+/**
+ * Build a host match pattern (origin + /*) for chrome.permissions.
+ * Returns null if the URL can't be parsed.
+ */
+function originPattern(url) {
+    try {
+        const u = new URL(url);
+        return `${u.protocol}//${u.host}/*`;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Ensure the extension has host access to the configured server origin.
+ * The specific URL is never in the manifest — we request it at runtime
+ * against the broad `optional_host_permissions` patterns, so the server
+ * URL lives only in chrome.storage. Must run inside the click gesture, so
+ * chrome.permissions.request() is the first awaited call.
+ */
+async function ensureHostPermission(url) {
+    const pattern = originPattern(url);
+    if (!pattern) return true; // unparseable — let the fetch surface the error
+    try {
+        return await chrome.permissions.request({ origins: [pattern] });
+    } catch {
+        return true; // localhost / already-granted / API hiccup — don't block save
+    }
+}
+
+saveBtn.addEventListener('click', async () => {
     const url = serverUrlInput.value.trim().replace(/\/+$/, '');
     if (!url) {
         serverUrlInput.value = DEFAULT_SERVER_URL;
+        return;
+    }
+    // Grant host access for this origin BEFORE saving, so the background
+    // service worker can fetch /health, /api/config and /users against it.
+    const granted = await ensureHostPermission(url);
+    if (!granted) {
+        setHealthStatus('error', 'Permission denied — click Save and choose Allow');
         return;
     }
     chrome.storage.local.set({ serverUrl: url }, () => {
